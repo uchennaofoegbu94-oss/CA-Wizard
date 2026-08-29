@@ -3,11 +3,36 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="alternate icon" href="/favicon.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#1e40af" />
+    <meta name="theme-color" content="#0f172a" />
     <meta name="description" content="CA-Wizard — Multi-tenant School Assessment Management Platform" />
-    <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <title>CA-Wizard</title>
+
+    <!-- Open Graph / social share preview (WhatsApp, LinkedIn, etc.) -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="CA-Wizard — School Assessment Management, Simplified" />
+    <meta property="og:description" content="From CA scores to transcripts — all in one place. Built for Nigerian schools." />
+    <meta property="og:image" content="/og-image.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="CA-Wizard — School Assessment Management, Simplified" />
+    <meta name="twitter:description" content="From CA scores to transcripts — all in one place. Built for Nigerian schools." />
+    <meta name="twitter:image" content="/og-image.png" />
+    <script>
+      // Runs before React mounts, deliberately blocking, so a dark-mode
+      // preference doesn't flash light theme first on load. Mirrors the
+      // resolution logic in src/contexts/ThemeContext.tsx exactly — if
+      // that logic ever changes, this needs to change with it.
+      (function () {
+        try {
+          var stored = localStorage.getItem('ca-wizard-theme');
+          var theme = stored === 'light' || stored === 'dark' || stored === 'system' ? stored : 'system';
+          var isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          if (isDark) document.documentElement.classList.add('dark');
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

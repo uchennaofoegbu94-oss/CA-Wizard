@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#60a5fa"/>
+      <stop offset="1" stop-color="#2563eb"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="16" fill="url(#g)"/>
+  <!-- graduation cap glyph, redrawn (not copied) in the same visual language as lucide's GraduationCap, sized to sit comfortably within a maskable-icon safe zone -->
+  <path d="M32 15.5 L52 24 L32 32.5 L12 24 Z" fill="#ffffff"/>
+  <path d="M20 27.3 V37 C20 40.5 25.4 43.5 32 43.5 C38.6 43.5 44 40.5 44 37 V27.3 L32 32.5 Z" fill="#ffffff" fill-opacity="0.92"/>
+  <path d="M49.5 26.2 V36.5" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round"/>
+  <circle cx="49.5" cy="39.2" r="2.3" fill="#ffffff"/>
+</svg>

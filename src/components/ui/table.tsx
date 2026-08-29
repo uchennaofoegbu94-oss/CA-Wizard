@@ -1,6 +1,5 @@
 import * as React from 'react'
 import { cn } from '@/lib/utils'
-import { Loader2 } from 'lucide-react'
 
 // ─── Table ────────────────────────────────────────────────
 
@@ -42,6 +41,7 @@ const TableHead = React.forwardRef<HTMLTableCellElement, React.ThHTMLAttributes<
   ({ className, ...props }, ref) => (
     <th
       ref={ref}
+      scope="col"
       className={cn(
         'h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0',
         className
@@ -82,9 +82,9 @@ interface SpinnerProps {
 }
 
 function Spinner({ size = 'md', className }: SpinnerProps) {
-  const sizeMap = { sm: 'h-4 w-4', md: 'h-6 w-6', lg: 'h-10 w-10' }
+  const sizeMap = { sm: 'h-4 w-4 border-2', md: 'h-6 w-6 border-2', lg: 'h-10 w-10 border-[3px]' }
   return (
-    <Loader2 className={cn('animate-spin text-muted-foreground', sizeMap[size], className)} />
+    <div role="status" aria-label="Loading" className={cn('saas-spinner', sizeMap[size], className)} />
   )
 }
 

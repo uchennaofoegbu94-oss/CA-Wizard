@@ -26,6 +26,11 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        // og-image.png is only ever fetched by external link-preview
+        // crawlers (WhatsApp, LinkedIn, etc.) over plain HTTP — the
+        // app itself never loads it, so precaching it for every
+        // visitor's first load would just be 150+ KB of pure waste.
+        globIgnores: ['og-image.png'],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/.*\.supabase\.co\/.*/i,

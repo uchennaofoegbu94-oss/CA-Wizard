@@ -14,11 +14,15 @@ export function slugify(text: string): string {
     .replace(/^-+|-+$/g, '')
 }
 
+// Cryptographically secure — Math.random() is a fast, predictable PRNG
+// (V8 uses xorshift128+), not suitable for anything that gates account
+// creation. crypto.getRandomValues() is the Web Crypto API, available
+// in every modern browser, and costs nothing extra to use here.
 export function generateInviteCode(length = 8): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-  return Array.from({ length }, () =>
-    chars[Math.floor(Math.random() * chars.length)]
-  ).join('')
+  const bytes = new Uint32Array(length)
+  crypto.getRandomValues(bytes)
+  return Array.from(bytes, b => chars[b % chars.length]).join('')
 }
 
 export function formatDate(date: string | Date | null): string {
@@ -34,6 +38,18 @@ export function formatDateTime(date: string | Date | null): string {
     day: '2-digit', month: 'short', year: 'numeric',
     hour: '2-digit', minute: '2-digit'
   }).format(new Date(date))
+}
+
+export function timeAgo(date: string | Date): string {
+  const seconds = Math.floor((Date.now() - new Date(date).getTime()) / 1000)
+  if (seconds < 60) return 'just now'
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  if (days < 7) return `${days}d ago`
+  return formatDate(date)
 }
 
 export function initials(firstName: string, lastName: string): string {
@@ -69,10 +85,6 @@ export function gradeFromScore(
     : { grade: 'F', remark: 'Fail' }
 }
 
-export function positionSuffix(pos: number): string {
-  return ordinalSuffix(pos)
-}
-
 export function truncate(text: string, length = 40): string {
   if (text.length <= length) return text
   return text.slice(0, length).trimEnd() + '…'
@@ -84,4 +96,19 @@ export function isExpired(dateStr: string): boolean {
 
 export function sessionYearLabel(startYear: number, endYear: number): string {
   return `${startYear}/${endYear}`
+}
+
+// A stable, anonymous per-browser identity for public interactions that
+// don't require an account (currently: blog reactions). Not a security
+// token — just enough to stop one click from double-counting itself.
+// Generated once and reused; crypto.randomUUID() has no compatibility
+// concerns in any browser this app targets.
+export function getVisitorToken(): string {
+  const KEY = 'ca-wizard-visitor-token'
+  let token = window.localStorage.getItem(KEY)
+  if (!token) {
+    token = crypto.randomUUID()
+    window.localStorage.setItem(KEY, token)
+  }
+  return token
 }

@@ -3,8 +3,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Plus, Search, MoreVertical, Loader2, School, Pencil, Ban, CheckCircle, Trash2 } from 'lucide-react'
+import { Plus, Search, MoreVertical, Loader2, School, Pencil, Ban, CheckCircle, Trash2, RefreshCw } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/contexts/AuthContext'
+import { logAudit } from '@/lib/audit'
+import { notifyManyUsers, type NotificationType } from '@/lib/notifications'
 import { slugify, formatDate } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input, Label, Textarea } from '@/components/ui/input'
@@ -39,7 +42,7 @@ const schoolSchema = z.object({
   email: z.string().email('Enter a valid email').optional().or(z.literal('')),
   motto: z.string().optional(),
   principal_name: z.string().optional(),
-  subscription_tier: z.enum(['free', 'basic', 'premium']).default('free')
+  subscription_tier: z.enum(['free', 'starter', 'professional', 'enterprise']).default('free')
 })
 
 type SchoolFormData = z.infer<typeof schoolSchema>
@@ -76,9 +79,42 @@ async function updateSchool(id: string, values: Partial<SchoolFormData>): Promis
   return data as SchoolType
 }
 
-async function updateSchoolStatus(id: string, status: 'active' | 'suspended'): Promise<void> {
+async function updateSchoolStatus(
+  id: string,
+  status: 'active' | 'suspended',
+  previousStatus: string,
+  actorProfileId: string | null
+): Promise<void> {
   const { error } = await supabase.from('schools').update({ status }).eq('id', id)
   if (error) throw error
+
+  logAudit({
+    schoolId: id, userId: actorProfileId, action: 'UPDATE', entityType: 'school_status',
+    entityId: id, oldValue: { status: previousStatus }, newValue: { status }
+  })
+
+  // Notify the school's admin(s) — this is exactly the case that needs
+  // to reach someone who may be logged out (a school being approved
+  // means the admin who registered it hasn't been able to sign in at
+  // all yet), hence requiresEmail: true. No email provider is wired up
+  // yet — see migration 012 — but the row is ready the moment one is.
+  const { data: admins } = await supabase.from('profiles').select('id').eq('school_id', id).eq('role', 'school_admin')
+  if (!admins || admins.length === 0) return
+
+  const wasApproval = status === 'active' && previousStatus === 'pending'
+  const type: NotificationType = status === 'suspended' ? 'school_suspended' : wasApproval ? 'school_approved' : 'school_reactivated'
+  const title = status === 'suspended'
+    ? 'Your school has been suspended'
+    : wasApproval ? 'Your school has been approved!' : 'Your school has been reactivated'
+  const body = status === 'suspended'
+    ? 'Access to CA-Wizard has been temporarily suspended for your school. Contact support for details.'
+    : wasApproval
+      ? 'Your school is now active. Sign in to start setting up classes, subjects, and teachers.'
+      : "Your school's access has been restored. Sign in to continue where you left off."
+
+  await notifyManyUsers(admins.map(a => a.id), {
+    schoolId: id, type, title, body, linkPath: '/school', requiresEmail: true
+  })
 }
 
 async function deleteSchool(id: string): Promise<void> {
@@ -91,13 +127,14 @@ async function deleteSchool(id: string): Promise<void> {
 type DialogMode = 'create' | 'edit' | null
 
 export default function SchoolsPage() {
+  const { profile } = useAuth()
   const qc = useQueryClient()
   const [search, setSearch] = useState('')
   const [dialogMode, setDialogMode] = useState<DialogMode>(null)
   const [selected, setSelected] = useState<SchoolType | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<SchoolType | null>(null)
 
-  const { data: schools = [], isLoading } = useQuery({
+  const { data: schools = [], isLoading, isFetching, refetch } = useQuery({
     queryKey: ['schools'],
     queryFn: fetchSchools
   })
@@ -128,8 +165,8 @@ export default function SchoolsPage() {
   })
 
   const statusMutation = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: 'active' | 'suspended' }) =>
-      updateSchoolStatus(id, status),
+    mutationFn: ({ id, status, previousStatus }: { id: string; status: 'active' | 'suspended'; previousStatus: string }) =>
+      updateSchoolStatus(id, status, previousStatus, profile?.id ?? null),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['schools'] })
       toast.success('Status updated')
@@ -162,7 +199,7 @@ export default function SchoolsPage() {
     setValue('email', school.email ?? '')
     setValue('motto', school.motto ?? '')
     setValue('principal_name', school.principal_name ?? '')
-    setValue('subscription_tier', school.subscription_tier as 'free' | 'basic' | 'premium')
+    setValue('subscription_tier', school.subscription_tier as 'free' | 'starter' | 'professional' | 'enterprise')
     setDialogMode('edit')
   }
 
@@ -176,7 +213,26 @@ export default function SchoolsPage() {
     if (dialogMode === 'create') {
       await createMutation.mutateAsync(data)
     } else if (selected) {
+      // Captured before the mutation runs, from the school row already
+      // loaded into `selected` when the edit dialog opened — this is
+      // the only place the pre-change tier is available, since
+      // updateSchool() just overwrites the row.
+      const tierChanged = selected.subscription_tier !== data.subscription_tier
+      const previousTier = selected.subscription_tier
+
       await updateMutation.mutateAsync({ id: selected.id, data })
+
+      if (tierChanged) {
+        logAudit({
+          schoolId: selected.id,
+          userId: profile?.id ?? null,
+          action: 'UPDATE',
+          entityType: 'school_subscription_tier',
+          entityId: selected.id,
+          oldValue: { subscription_tier: previousTier },
+          newValue: { subscription_tier: data.subscription_tier }
+        })
+      }
     }
   }
 
@@ -192,10 +248,15 @@ export default function SchoolsPage() {
         title="Schools"
         description={`${schools.length} school${schools.length !== 1 ? 's' : ''} registered on the platform`}
         action={
-          <Button onClick={openCreate}>
-            <Plus className="mr-2 h-4 w-4" />
-            Add School
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => refetch()} disabled={isFetching} aria-label="Refresh schools list">
+              <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
+            </Button>
+            <Button onClick={openCreate}>
+              <Plus className="mr-2 h-4 w-4" />
+              Add School
+            </Button>
+          </div>
         }
       />
 
@@ -280,7 +341,7 @@ export default function SchoolsPage() {
                     <TableCell>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                          <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={`More actions for ${school.name}`}>
                             <MoreVertical className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>
@@ -290,17 +351,18 @@ export default function SchoolsPage() {
                           </DropdownMenuItem>
                           {school.status === 'active' ? (
                             <DropdownMenuItem
-                              onClick={() => statusMutation.mutate({ id: school.id, status: 'suspended' })}
+                              onClick={() => statusMutation.mutate({ id: school.id, status: 'suspended', previousStatus: school.status })}
                               className="text-orange-600"
                             >
                               <Ban className="mr-2 h-4 w-4" /> Suspend
                             </DropdownMenuItem>
                           ) : (
                             <DropdownMenuItem
-                              onClick={() => statusMutation.mutate({ id: school.id, status: 'active' })}
+                              onClick={() => statusMutation.mutate({ id: school.id, status: 'active', previousStatus: school.status })}
                               className="text-green-600"
                             >
-                              <CheckCircle className="mr-2 h-4 w-4" /> Activate
+                              <CheckCircle className="mr-2 h-4 w-4" />
+                              {school.status === 'pending' ? 'Approve School' : 'Activate'}
                             </DropdownMenuItem>
                           )}
                           <DropdownMenuSeparator />
@@ -359,15 +421,16 @@ export default function SchoolsPage() {
               <Input id="motto" placeholder="Excellence Through Knowledge" {...register('motto')} />
             </FormField>
 
-            <FormField label="Subscription Plan" htmlFor="subscription_tier">
+            <FormField label="Subscription Plan" error={errors.subscription_tier?.message} htmlFor="subscription_tier">
               <select
                 id="subscription_tier"
                 {...register('subscription_tier')}
                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <option value="free">Free</option>
-                <option value="basic">Basic</option>
-                <option value="premium">Premium</option>
+                <option value="starter">Starter</option>
+                <option value="professional">Professional</option>
+                <option value="enterprise">Enterprise</option>
               </select>
             </FormField>
 

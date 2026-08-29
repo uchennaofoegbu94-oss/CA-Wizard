@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 480" fill="none">
+  <defs>
+    <radialGradient id="blob1" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#3b82f6" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#3b82f6" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="blob2" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#818cf8" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="#818cf8" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="panelBorder" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.03"/>
+    </linearGradient>
+    <linearGradient id="barFill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#60a5fa"/>
+      <stop offset="1" stop-color="#2563eb"/>
+    </linearGradient>
+  </defs>
+
+  <circle cx="180" cy="140" r="180" fill="url(#blob1)"/>
+  <circle cx="470" cy="340" r="160" fill="url(#blob2)"/>
+
+  <!-- back panel: grade distribution bars, gently rotated -->
+  <g transform="translate(60,150) rotate(-6)">
+    <rect width="230" height="230" rx="18" fill="#0f172a" fill-opacity="0.5" stroke="url(#panelBorder)"/>
+    <rect x="24" y="24" width="120" height="12" rx="6" fill="#93c5fd" fill-opacity="0.5"/>
+    <rect x="24" y="46" width="80" height="9" rx="4.5" fill="#64748b" fill-opacity="0.55"/>
+    <g>
+      <rect x="28" y="150" width="24" height="50" rx="4" fill="url(#barFill)" fill-opacity="0.9"/>
+      <rect x="64" y="120" width="24" height="80" rx="4" fill="url(#barFill)"/>
+      <rect x="100" y="95" width="24" height="105" rx="4" fill="url(#barFill)"/>
+      <rect x="136" y="130" width="24" height="70" rx="4" fill="url(#barFill)" fill-opacity="0.75"/>
+      <rect x="172" y="160" width="24" height="40" rx="4" fill="url(#barFill)" fill-opacity="0.55"/>
+    </g>
+  </g>
+
+  <!-- front panel: report card mockup -->
+  <g transform="translate(260,90) rotate(4)">
+    <rect width="290" height="320" rx="20" fill="#111827" stroke="url(#panelBorder)"/>
+    <rect x="26" y="30" width="150" height="14" rx="7" fill="#93c5fd" fill-opacity="0.6"/>
+    <rect x="26" y="54" width="90" height="10" rx="5" fill="#64748b" fill-opacity="0.6"/>
+    <rect x="26" y="90" width="238" height="1" fill="#334155"/>
+
+    <!-- subject rows -->
+    <g opacity="0.9">
+      <rect x="26" y="112" width="150" height="11" rx="5.5" fill="#cbd5e1" fill-opacity="0.35"/>
+      <rect x="222" y="110" width="42" height="16" rx="5" fill="#3b82f6" fill-opacity="0.5" stroke="#3b82f6" stroke-opacity="0.5"/>
+    </g>
+    <g opacity="0.75">
+      <rect x="26" y="140" width="110" height="11" rx="5.5" fill="#cbd5e1" fill-opacity="0.3"/>
+      <rect x="222" y="138" width="42" height="16" rx="5" fill="#22c55e" fill-opacity="0.35" stroke="#22c55e" stroke-opacity="0.5"/>
+    </g>
+    <g opacity="0.85">
+      <rect x="26" y="168" width="130" height="11" rx="5.5" fill="#cbd5e1" fill-opacity="0.32"/>
+      <rect x="222" y="166" width="42" height="16" rx="5" fill="#3b82f6" fill-opacity="0.5" stroke="#3b82f6" stroke-opacity="0.5"/>
+    </g>
+    <g opacity="0.7">
+      <rect x="26" y="196" width="95" height="11" rx="5.5" fill="#cbd5e1" fill-opacity="0.28"/>
+      <rect x="222" y="194" width="42" height="16" rx="5" fill="#f59e0b" fill-opacity="0.35" stroke="#f59e0b" stroke-opacity="0.5"/>
+    </g>
+
+    <rect x="26" y="230" width="238" height="1" fill="#334155"/>
+
+    <!-- overall total / grade summary -->
+    <rect x="26" y="254" width="110" height="46" rx="10" fill="#1e293b" stroke="#334155"/>
+    <rect x="150" y="254" width="114" height="46" rx="10" fill="#3b82f6" fill-opacity="0.18" stroke="#3b82f6" stroke-opacity="0.4"/>
+    <circle cx="207" cy="270" r="9" fill="#3b82f6"/>
+    <rect x="222" y="266" width="34" height="8" rx="4" fill="#93c5fd" fill-opacity="0.7"/>
+  </g>
+
+  <!-- a floating checkmark badge, small accent detail -->
+  <g transform="translate(492,300)">
+    <circle r="26" fill="#0f172a" stroke="#22c55e" stroke-opacity="0.5"/>
+    <path d="M-10 0 L-3 8 L11 -9" stroke="#4ade80" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  </g>
+</svg>

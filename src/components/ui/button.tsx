@@ -33,10 +33,18 @@ export interface ButtonProps
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, asChild = false, ...props }, ref) => {
+  ({ className, variant, size, asChild = false, title, ...props }, ref) => {
     const Comp = asChild ? Slot : 'button'
+    // A screen reader announces aria-label, but it gives a sighted mouse
+    // user nothing to hover over — no native tooltip appears unless
+    // `title` is also set. Icon-only buttons across the app already carry
+    // aria-label from the earlier accessibility pass; mirroring it into
+    // title here (only when title isn't explicitly overridden) gives all
+    // of them a hover tooltip from this one fix point, rather than
+    // needing to revisit every call site individually.
+    const resolvedTitle = title ?? (typeof props['aria-label'] === 'string' ? props['aria-label'] : undefined)
     return (
-      <Comp className={cn(buttonVariants({ variant, size, className }))} ref={ref} {...props} />
+      <Comp className={cn(buttonVariants({ variant, size, className }))} title={resolvedTitle} ref={ref} {...props} />
     )
   }
 )

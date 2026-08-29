@@ -1,0 +1,198 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   Global theme
+   ============================================================
+   :root = the app's actual working theme: light surfaces
+   (white/near-white cards and backgrounds), with the SaaS blue
+   (blue-600, #2563eb — same hue as the pricing mockup, just the
+   shade that actually keeps white button/link text at a safe
+   contrast ratio; see the accompanying note on --primary below)
+   as the single accent color used for buttons, links, focus
+   rings, and active states.
+
+   .dark = the pricing-mockup's deep navy palette (#0f172a bg,
+   blue-500 accent). This is intentionally NOT the global default
+   anymore — it's scoped to the landing page only (LandingPage.tsx
+   applies class="dark" to its own root element), which is the one
+   surface that's explicitly supposed to keep the mockup's dark
+   look regardless of what the rest of the app does. Because these
+   are CSS custom properties, adding .dark to one subtree makes
+   every bg-background/bg-card/etc. underneath it resolve against
+   these values while the rest of the app keeps using :root's.
+
+   This split also means light/dark/system mode switching (a
+   separate, later piece of work) is now just "toggle .dark on
+   <html> based on preference" — the token infrastructure for it
+   already exists here.
+   ============================================================ */
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    /* blue-600 #2563eb — NOT blue-500. White text on blue-500 only
+       reaches 3.68:1 contrast (fails WCAG AA's 4.5:1 for normal
+       text); blue-600 reaches 5.17:1. Same reasoning applies to
+       blue-600 as link/icon text color on white. */
+    --primary: 221.2 83.2% 53.3%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    /* Same reasoning as the .dark theme below: at the default shadcn
+       light border color, a form field's boundary sits at ~1.2:1
+       contrast against a white background — under WCAG's 3:1 non-text
+       minimum for UI components. Decorative --border stays default. */
+    --input: 215.4 16.3% 46.9%;
+    --ring: 221.2 83.2% 53.3%;
+    --radius: 0.5rem;
+    /* Without this, browsers fall back to the OS's raw dark/light
+       preference for native form-control auto-styling (the pairing
+       of default text/background colors a browser supplies for
+       anything the page doesn't explicitly style) — independent of
+       and blind to which of THIS app's own two themes (:root vs
+       .dark) is actually active on the page. That mismatch is what
+       made score figures unreadable in Score Entry on an OS set to
+       dark: the input's background was correctly white (:root's
+       theme, explicitly set via bg-background), but with no
+       color-scheme declared, some browsers still supplied a
+       dark-mode-appropriate (light-colored) native text color for
+       the unstyled parts of the control — light text on a white
+       background. Declaring color-scheme per theme block keeps
+       native form-control rendering locked to whichever theme is
+       actually in effect, never the OS's independent preference. */
+    color-scheme: light;
+  }
+
+  .dark {
+    --background: 222.2 47.4% 11.2%;       /* #0f172a */
+    --foreground: 210 40% 98%;
+    --card: 220 41.5% 12.7%;               /* #131c2e */
+    --card-foreground: 210 40% 98%;
+    --popover: 220 41.5% 12.7%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 217.2 91.2% 59.8%;          /* #3b82f6 — blue-500 */
+    --primary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 215.4 16.3% 46.9%;
+    --ring: 217.2 91.2% 59.8%;
+    color-scheme: dark;
+  }
+}
+
+@layer base {
+  * { @apply border-border; }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+/* Smooth theme switching — skipped entirely for anyone with
+   prefers-reduced-motion set, per the accessibility requirement rather
+   than just defaulting motion on for everyone. */
+@media (prefers-reduced-motion: no-preference) {
+  body {
+    transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+  }
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { @apply bg-transparent; }
+::-webkit-scrollbar-thumb { @apply bg-border rounded-full; }
+::-webkit-scrollbar-thumb:hover { @apply bg-muted-foreground/40; }
+
+/* Print styles for report cards */
+@media print {
+  .no-print { display: none !important; }
+  .print-only { display: block !important; }
+  body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+
+/* ── SaaS spinner ─────────────────────────────────────────────
+   Replaces the plain rotating-ring Loader2 icon with a two-tone
+   arc spin in the SaaS blue — same accessible role/label, just a
+   more distinctive motion than a generic system spinner. */
+@keyframes saas-spin {
+  to { transform: rotate(360deg); }
+}
+.saas-spinner {
+  border-radius: 9999px;
+  border-style: solid;
+  border-color: hsl(var(--primary) / 0.15);
+  border-top-color: hsl(var(--primary));
+  animation: saas-spin 0.7s cubic-bezier(0.5, 0.1, 0.5, 0.9) infinite;
+}
+
+/* ── Subtle global background texture ────────────────────────
+   A pure-CSS repeating dot grid — deliberately not an external SVG
+   file (that's what actually broke when it was image-file-based; see
+   the note in components/brand/BrandArt.tsx). No network request, no
+   file-path dependency, nothing to ever 404 or fail to decode. Built
+   on hsl(var(--foreground) / …) rather than a fixed color, so it's
+   automatically the right shade of subtle in both light and dark
+   theme — no separate light/dark variant needed. Applied as an
+   additive className alongside each page's existing background, on
+   the landing page, the rest of the marketing site, and the
+   auth (login/register) pages. */
+.bg-dot-pattern {
+  /* Tuned separately per theme, not a single fixed value — a near-
+     black dot at a given opacity on a white background reads as far
+     fainter to the eye than a near-white dot at that same opacity on
+     a near-black background (this is why the pattern looked like it
+     "wasn't applying" on the pages that use the app's default LIGHT
+     theme — About/Blog/Get Involved/the individual blog post page —
+     while it read fine on the pages that force .dark, like the
+     landing page: same rule, same opacity, genuinely different
+     perceived contrast). 0.16 is the light-theme (default, :root)
+     value; the .dark override below keeps the original, already-
+     correct 0.09 rather than also bumping it and overshooting into
+     "not actually subtle anymore" territory. */
+  background-image: radial-gradient(hsl(var(--foreground) / 0.16) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+.dark .bg-dot-pattern {
+  background-image: radial-gradient(hsl(var(--foreground) / 0.09) 1px, transparent 1px);
+}
+
+/* Auth pages' own background (dot pattern layered directly over the
+   brand-900 -> 800 -> 700 gradient, matching Tailwind's
+   `bg-gradient-to-br from-brand-900 via-brand-800 to-brand-700`
+   exactly — see tailwind.config.ts's brand color comments for those
+   hex values). This REPLACES using the two as separate classes: a
+   dot-pattern class and a gradient class both set `background-image`,
+   and CSS doesn't merge two rules that set the same property on the
+   same element — whichever is later in the cascade wins outright,
+   which is exactly what broke the auth pages (the dot-pattern rule
+   silently wiped out the entire gradient, leaving the page solid
+   white). Composing both layers into one background-image value here
+   is what actually lets them coexist. */
+.auth-gradient-bg {
+  background-image:
+    radial-gradient(rgba(255, 255, 255, 0.09) 1px, transparent 1px),
+    linear-gradient(to bottom right, #0f172a 0%, #172554 50%, #1e3a8a 100%);
+  background-size: 28px 28px, auto;
+}
+

@@ -1,0 +1,41 @@
+-- ============================================================
+-- CA-WIZARD | Migration 033 — Fix blog post read failure:
+--                              missing GRANT on profiles
+-- ============================================================
+-- Root cause, confirmed by reproducing the exact browser console
+-- error (401 on the blog_posts request) against a real Postgres 16
+-- instance: `profiles` has never had an explicit GRANT SELECT for
+-- anon or authenticated anywhere in this schema's history — every
+-- other public-facing table (blog_posts, schools, announcements,
+-- etc.) does. The public blog post page embeds the author's profile
+-- (`author:profiles(*)`), and PostgREST needs at least a table-level
+-- SELECT privilege to construct that embed at all, separate from and
+-- prior to RLS row-filtering. Without it, Postgres raises
+-- "permission denied for table profiles" (SQLSTATE 42501), which
+-- PostgREST surfaces as HTTP 401 — reproduced verbatim:
+--
+--   ERROR:  permission denied for table profiles
+--
+-- The blog list page never embeds profiles, so it always worked;
+-- only the single-post detail page — which does — failed. This
+-- explains the full reported symptom precisely: the post shows fine
+-- in the list, but clicking through throws, the frontend's error
+-- handling correctly (if unhelpfully, from the outside) treats any
+-- query error as "not found" and redirects back to /blog.
+--
+-- This affects every visitor, not just anonymous ones — a logged-in
+-- teacher, school_admin, group_admin, or super_admin browsing the
+-- public blog would hit the identical missing-grant error, since
+-- `authenticated` never had this grant either.
+--
+-- Granting SELECT here is safe: it only allows the QUERY to execute
+-- without erroring. RLS (own_profile, requiring auth.uid() to match)
+-- still fully controls which ROWS are actually visible — an anon or
+-- unrelated authenticated visitor still sees nothing in the `author`
+-- field for someone else's profile, confirmed empirically before
+-- writing this migration. GRANT + RLS as two separate layers is the
+-- same two-layer model every other table in this schema already
+-- uses; profiles was simply missed.
+-- ============================================================
+
+GRANT SELECT ON profiles TO anon, authenticated;

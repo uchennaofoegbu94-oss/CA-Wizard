@@ -10,10 +10,11 @@ import { Link } from 'react-router-dom'
 import type { Session, Term } from '@/types'
 
 async function fetchSchoolDashboard(schoolId: string) {
-  const [students, teachers, classes, currentSession, terms] = await Promise.all([
+  const [students, teachers, classes, subjects, currentSession, terms] = await Promise.all([
     supabase.from('students').select('id', { count: 'exact', head: true }).eq('school_id', schoolId).eq('is_active', true),
     supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('school_id', schoolId).eq('role', 'teacher'),
     supabase.from('classes').select('id', { count: 'exact', head: true }).eq('school_id', schoolId),
+    supabase.from('subjects').select('id', { count: 'exact', head: true }).eq('school_id', schoolId),
     supabase.from('sessions').select('*').eq('school_id', schoolId).eq('is_current', true).single(),
     supabase.from('terms').select('*').eq('school_id', schoolId).order('created_at', { ascending: false }).limit(3)
   ])
@@ -22,6 +23,7 @@ async function fetchSchoolDashboard(schoolId: string) {
     studentCount: students.count ?? 0,
     teacherCount: teachers.count ?? 0,
     classCount: classes.count ?? 0,
+    subjectCount: subjects.count ?? 0,
     currentSession: currentSession.data as Session | null,
     recentTerms: (terms.data ?? []) as Term[]
   }
@@ -86,7 +88,7 @@ export default function SchoolAdminDashboard() {
             <StatsCard title="Students" value={data?.studentCount ?? 0} subtitle="Active students" icon={<Users className="h-5 w-5" />} />
             <StatsCard title="Teachers" value={data?.teacherCount ?? 0} subtitle="Registered" icon={<Users className="h-5 w-5" />} />
             <StatsCard title="Classes" value={data?.classCount ?? 0} subtitle="This session" icon={<GraduationCap className="h-5 w-5" />} />
-            <StatsCard title="Subjects" value="—" subtitle="Across all levels" icon={<BookOpen className="h-5 w-5" />} />
+            <StatsCard title="Subjects" value={data?.subjectCount ?? 0} subtitle="Across all levels" icon={<BookOpen className="h-5 w-5" />} />
           </>
         )}
       </div>

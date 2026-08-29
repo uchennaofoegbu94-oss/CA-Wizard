@@ -1,0 +1,41 @@
+-- ============================================================
+-- CA-WIZARD | Migration 038 — Tickets shouldn't be visible to
+--                              super_admin before they're escalated
+-- ============================================================
+-- Confirmed bug, not intended behavior. The confirmed routing spec
+-- (023) is explicit: "a teacher's ticket -> school_admin -> (if
+-- unresolved) escalate to group_admin ... or straight to
+-- super_admin". That means a fresh teacher ticket should be
+-- invisible to super_admin until a school_admin (and, if the
+-- school's in a group, a group_admin after them) actually escalates
+-- it there — the same way it's invisible to group_admin until the
+-- school_admin escalates it to 'group'.
+--
+-- ticket_super_admin_read never enforced that: it granted
+-- unconditional visibility (`is_super_admin()` alone, no
+-- escalation_level check) from the moment a ticket was created,
+-- while every other role's read policy already checked
+-- escalation_level correctly. This is a gap in the original design,
+-- not a regression — the UPDATE policy (ticket_handler_update) was
+-- always escalation-gated for school_admin/group_admin; the SELECT
+-- policy for super_admin was the one place that check was missing.
+--
+-- Fix: super_admin can only see a ticket once escalation_level is
+-- actually 'platform' — which the existing trigger
+-- (set_ticket_escalation_level, 023) already sets immediately for a
+-- school_admin's own ticket (confirmed: "routes directly to
+-- super_admin, skipping the group layer entirely"), so that case is
+-- unaffected. Only teacher tickets sitting at 'school' or 'group'
+-- change behavior here — correctly, since those haven't reached
+-- super_admin yet.
+--
+-- UPDATE access for super_admin is intentionally left unconditional
+-- — a platform-owner override to intervene on any ticket if truly
+-- needed isn't the same claim as "should see it in their queue by
+-- default," and nothing about the reported issue was about write
+-- access.
+-- ============================================================
+
+DROP POLICY IF EXISTS "ticket_super_admin_read" ON support_tickets;
+CREATE POLICY "ticket_super_admin_read" ON support_tickets
+  FOR SELECT USING (is_super_admin() AND escalation_level = 'platform');

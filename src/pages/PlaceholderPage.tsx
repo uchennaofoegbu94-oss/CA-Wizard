@@ -6,7 +6,7 @@ interface PlaceholderProps {
   description?: string
 }
 
-export default function PlaceholderPage({ title, description }: PlaceholderProps) {
+function PlaceholderPage({ title, description }: PlaceholderProps) {
   return (
     <EmptyState
       icon={<Construction className="h-12 w-12" />}
@@ -16,18 +16,16 @@ export default function PlaceholderPage({ title, description }: PlaceholderProps
   )
 }
 
-// Specific placeholder exports for each route
-export const SessionsPage = () => <PlaceholderPage title="Sessions" description="Manage academic sessions and terms — Phase 2" />
-export const ClassesPage = () => <PlaceholderPage title="Classes" description="Create and manage classes — Phase 2" />
-export const StudentsPage = () => <PlaceholderPage title="Students" description="Student management and enrollment — Phase 2" />
-export const SubjectsPage = () => <PlaceholderPage title="Subjects" description="Subject configuration per class level — Phase 2" />
-export const TeachersPage = () => <PlaceholderPage title="Teachers & Invites" description="Invite teachers and manage assignments — Phase 2" />
-export const AssessmentsPage = () => <PlaceholderPage title="Assessment Categories" description="Configure CA categories and weights — Phase 2" />
-export const GradingPage = () => <PlaceholderPage title="Grading System" description="Configure grade boundaries and remarks — Phase 2" />
-export const ReportsPage = () => <PlaceholderPage title="Reports" description="Generate and export report cards — Phase 3" />
-export const SettingsPage = () => <PlaceholderPage title="Settings" description="School configuration — Phase 2" />
-export const ScoreEntryPage = () => <PlaceholderPage title="Score Entry" description="Enter CA and exam scores — Phase 2" />
-export const BroadsheetPage = () => <PlaceholderPage title="Broadsheet" description="Class CA broadsheet view — Phase 2" />
-export const AuditPage = () => <PlaceholderPage title="Audit Logs" description="Platform activity logs — Phase 2" />
-export const UsersPage = () => <PlaceholderPage title="Users" description="All platform users — Phase 2" />
-export const ProfilePage = () => <PlaceholderPage title="My Profile" description="Update your profile — Phase 2" />
+// ── Phase 3 stubs ────────────────────────────────────────────
+export const ReportsPage    = () => <PlaceholderPage title="Reports" description="Broadsheet, report card generation and PDF export — Phase 3" />
+export const ScoreEntryPage = () => <PlaceholderPage title="Score Entry" description="Offline-capable CA and exam score entry grid — Phase 3" />
+export const BroadsheetPage = () => <PlaceholderPage title="Broadsheet" description="Class CA broadsheet with computed totals — Phase 3" />
+
+// ── Super Admin stubs ────────────────────────────────────────
+export const AuditPage = () => <PlaceholderPage title="Audit Logs" description="Platform-wide activity log — Phase 3" />
+export const UsersPage = () => <PlaceholderPage title="Users" description="All platform users — Phase 3" />
+
+// ── Shared stubs ─────────────────────────────────────────────
+export const ProfilePage = () => <PlaceholderPage title="My Profile" description="Update your profile — Phase 3" />
+
+export default PlaceholderPage

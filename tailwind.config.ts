@@ -1,5 +1,6 @@
 import type { Config } from 'tailwindcss'
 import animate from 'tailwindcss-animate'
+import typography from '@tailwindcss/typography'
 
 const config: Config = {
   darkMode: ['class'],
@@ -46,13 +47,25 @@ const config: Config = {
           foreground: 'hsl(var(--card-foreground))'
         },
         brand: {
+          // 50-600: unchanged pure-blue tints/accent — used for light info
+          // banners (bg-brand-50/border-brand-200) and icon/text accents
+          // (text-brand-600/700) that sit on the app's white surfaces.
           50: '#eff6ff',
           100: '#dbeafe',
+          200: '#bfdbfe',
+          300: '#93c5fd',
           500: '#3b82f6',
           600: '#2563eb',
-          700: '#1d4ed8',
-          800: '#1e40af',
-          900: '#1e3a8a'
+          // 700-900: shifted to the pricing mockup's navy family (900 is
+          // the exact #0f172a background color) instead of the old
+          // default-Tailwind-blue navy. This is what actually changes the
+          // look of the sidebar and auth-page gradients (bg-brand-900,
+          // from-brand-900 via-brand-800 to-brand-700) to the new SaaS
+          // colour — one edit here instead of touching every page that
+          // references these classes.
+          700: '#1e3a8a',
+          800: '#172554',
+          900: '#0f172a'
         }
       },
       borderRadius: {
@@ -72,7 +85,7 @@ const config: Config = {
       }
     }
   },
-  plugins: [animate]
+  plugins: [animate, typography]
 }
 
 export default config
