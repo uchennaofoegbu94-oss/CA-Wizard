@@ -10,11 +10,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from '@/components/ui/select'
+import { groupBySection } from '@/lib/sections'
 import { ordinalSuffix } from '@/lib/utils'
 import { canUseBulkGeneration, tierLabel } from '@/lib/tierLimits'
 import toast from 'react-hot-toast'
-import type { Term, Subject, Student, StudentEnrollment, ClassSubjectTermResult, Class, Session, School } from '@/types'
+import type { Term, Subject, Student, StudentEnrollment, ClassSubjectTermResult, Class, Session, School, SchoolSection } from '@/types'
 
 interface StudentTotals {
   student: Student
@@ -95,12 +96,22 @@ export default function ReportsPage() {
   const effectiveTermId = selectedTermId || terms.find(t => t.is_current)?.id || terms[0]?.id || ''
   const selectedTerm = terms.find(t => t.id === effectiveTermId)
 
+  const { data: sections = [] } = useQuery({
+    queryKey: ['reports-sections', schoolId],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('school_sections').select('*').eq('school_id', schoolId!).order('order_index')
+      if (error) throw error
+      return data as SchoolSection[]
+    },
+    enabled: !!schoolId
+  })
+
   const { data: classes = [] } = useQuery({
     queryKey: ['reports-classes', schoolId, effectiveSessionId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('classes')
-        .select('*, class_level:class_levels(*), class_arm:class_arms(*)')
+        .select('*, class_level:class_levels(*, section:school_sections(*)), class_arm:class_arms(*)')
         .eq('school_id', schoolId!)
         .eq('session_id', effectiveSessionId)
       if (error) throw error
@@ -215,7 +226,16 @@ export default function ReportsPage() {
           <Select value={selectedClassId} onValueChange={setSelectedClassId}>
             <SelectTrigger className="sm:w-52"><SelectValue placeholder="Select a class" /></SelectTrigger>
             <SelectContent>
-              {classes.map(cls => <SelectItem key={cls.id} value={cls.id}>{classLabel(cls)}</SelectItem>)}
+              {sections.length > 0 ? (
+                groupBySection(classes, c => c.class_level, sections).map(group => (
+                  <SelectGroup key={group.section?.id ?? 'ungrouped'}>
+                    <SelectLabel>{group.section?.name ?? 'Ungrouped'}</SelectLabel>
+                    {group.items.map(cls => <SelectItem key={cls.id} value={cls.id}>{classLabel(cls)}</SelectItem>)}
+                  </SelectGroup>
+                ))
+              ) : (
+                classes.map(cls => <SelectItem key={cls.id} value={cls.id}>{classLabel(cls)}</SelectItem>)
+              )}
             </SelectContent>
           </Select>
           <Button
@@ -267,7 +287,7 @@ export default function ReportsPage() {
       ) : (
         <Card>
           <CardContent className="p-0" ref={broadsheetRef}>
-            <div className="bg-white p-6" style={{ borderTop: `4px solid ${school?.primary_color ?? '#1e3a8a'}` }}>
+            <div className="bg-white force-light-surface p-6" style={{ borderTop: `4px solid ${school?.primary_color ?? '#1e3a8a'}` }}>
               {/* Header: school branding + which class/term/session this is —
                   previously the exported PDF was just the bare table with no
                   indication of any of this at all. */}
@@ -284,29 +304,29 @@ export default function ReportsPage() {
               </p>
 
               <div className="overflow-x-auto">
-                <Table>
+                <Table containerClassName="max-h-[70vh]">
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="sticky left-0 bg-background z-10 w-8 px-2 py-2 text-xs">Pos</TableHead>
-                      <TableHead className="sticky left-8 bg-background z-10 px-2 py-2 text-xs">Student</TableHead>
+                      <TableHead className="sticky left-0 top-0 z-30 bg-background w-8 px-2 py-2 text-xs">Pos</TableHead>
+                      <TableHead className="sticky left-8 top-0 z-30 bg-background px-2 py-2 text-xs">Student</TableHead>
                       {subjects.map(s => (
-                        <TableHead key={s.id} className="text-center whitespace-nowrap px-1.5 py-2 text-xs w-14">{s.code ?? s.name.slice(0, 3).toUpperCase()}</TableHead>
+                        <TableHead key={s.id} className="sticky top-0 z-20 bg-background text-center whitespace-nowrap px-1.5 py-2 text-xs w-14">{s.code ?? s.name.slice(0, 3).toUpperCase()}</TableHead>
                       ))}
-                      <TableHead className="text-center font-semibold px-2 py-2 text-xs w-14">Total</TableHead>
-                      <TableHead className="text-center font-semibold px-2 py-2 text-xs w-16">Avg</TableHead>
-                      <TableHead className="w-8 px-1 no-print" />
+                      <TableHead className="sticky top-0 z-20 bg-background text-center font-semibold px-2 py-2 text-xs w-14">Total</TableHead>
+                      <TableHead className="sticky top-0 z-20 bg-background text-center font-semibold px-2 py-2 text-xs w-16">Avg</TableHead>
+                      <TableHead className="sticky top-0 z-20 bg-background w-8 px-1 no-print" />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {rows.map((row, idx) => (
                       <TableRow key={row.student.id}>
-                        <TableCell className="sticky left-0 bg-background px-2 py-1.5">
+                        <TableCell className="sticky left-0 z-10 bg-background px-2 py-1.5">
                           <div className="flex items-center gap-1">
                             {idx === 0 && <Trophy className="h-3 w-3 text-yellow-500" />}
                             <span className="text-xs font-medium">{ordinalSuffix(idx + 1)}</span>
                           </div>
                         </TableCell>
-                        <TableCell className="sticky left-8 bg-background font-medium text-xs whitespace-nowrap px-2 py-1.5">
+                        <TableCell className="sticky left-8 z-10 bg-background font-medium text-xs whitespace-nowrap px-2 py-1.5">
                           {row.student.last_name}, {row.student.first_name}
                         </TableCell>
                         {subjects.map(s => (

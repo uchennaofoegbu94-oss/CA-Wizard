@@ -330,22 +330,36 @@ export default function ScoreEntryPage() {
       ) : (
         <Card>
           <CardContent className="p-0">
-            <Table>
+            {/* containerClassName bounds the scroll frame so the sticky
+                header row actually freezes in place instead of just
+                scrolling away with the rest of the page — see the z-index
+                note on the header row below for how this and the sticky
+                Student column are kept from fighting each other. */}
+            <Table containerClassName="max-h-[70vh]">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="sticky left-0 bg-background z-10">Student</TableHead>
+                  {/* Top-left corner: sticky on BOTH axes, so it needs the
+                      highest z-index of anything in this table — it has to
+                      stay above ordinary sticky-top headers scrolling
+                      horizontally past it AND above the sticky-left Student
+                      column scrolling vertically underneath it. */}
+                  <TableHead className="sticky left-0 top-0 z-30 bg-background">Student</TableHead>
                   {inputFields.map(field => (
-                    <TableHead key={field.id} className="text-center whitespace-nowrap">
+                    <TableHead key={field.id} className="sticky top-0 z-20 bg-background text-center whitespace-nowrap">
                       {field.name}<br /><span className="text-xs text-muted-foreground font-normal">/{field.max_score}</span>
                     </TableHead>
                   ))}
-                  <TableHead className="text-center whitespace-nowrap font-semibold">Points Entered</TableHead>
+                  <TableHead className="sticky top-0 z-20 bg-background text-center whitespace-nowrap font-semibold">Points Entered</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {students.map(student => (
                   <TableRow key={student.id}>
-                    <TableCell className="sticky left-0 bg-background font-medium text-sm whitespace-nowrap">
+                    {/* Sticky-left only (not top) — z-10, one tier below the
+                        sticky-top headers above, so the header row always
+                        wins when both would otherwise overlap at the
+                        top-left corner during a diagonal scroll. */}
+                    <TableCell className="sticky left-0 z-10 bg-background font-medium text-sm whitespace-nowrap">
                       {student.last_name}, {student.first_name}
                     </TableCell>
                     {inputFields.map(field => {

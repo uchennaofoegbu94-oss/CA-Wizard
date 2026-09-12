@@ -3,6 +3,12 @@ dist
 dist-ssr
 *.local
 
+# Vite dependency pre-bundling cache — regenerated automatically by
+# `vite dev`/`vite build`, never meant to be committed. This is the
+# source of the .vite/deps_temp_*/package.json files that showed up.
+.vite
+.vite/
+
 # Env
 .env
 .env.local

@@ -52,7 +52,7 @@ export const TranscriptDocument = forwardRef<HTMLDivElement, TranscriptDocumentP
   const secondaryColor = school?.secondary_color ?? '#3b82f6'
 
   return (
-    <div ref={ref} className="relative bg-white p-8" style={{ borderTop: `6px solid ${primaryColor}` }}>
+    <div ref={ref} className="relative bg-white force-light-surface p-8" style={{ borderTop: `6px solid ${primaryColor}` }}>
       {school?.watermark_url && (
         <img src={school.watermark_url} alt="" className="absolute inset-0 m-auto max-h-96 max-w-96 opacity-[0.06] pointer-events-none select-none" />
       )}

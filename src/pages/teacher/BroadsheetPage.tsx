@@ -7,9 +7,10 @@ import { PageHeader, EmptyState, Spinner } from '@/components/ui/table'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from '@/components/ui/select'
 import { ordinalSuffix } from '@/lib/utils'
-import type { Term, Subject, Student, StudentEnrollment, ScoreFieldValue, TeacherAssignment, Class } from '@/types'
+import { groupBySection } from '@/lib/sections'
+import type { Term, Subject, Student, StudentEnrollment, ScoreFieldValue, TeacherAssignment, Class, SchoolSection } from '@/types'
 
 interface StudentTotals {
   student: Student
@@ -27,12 +28,22 @@ export default function BroadsheetPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('teacher_assignments')
-        .select('*, class:classes(*, class_level:class_levels(*), class_arm:class_arms(*)), subject:subjects(*)')
+        .select('*, class:classes(*, class_level:class_levels(*, section:school_sections(*)), class_arm:class_arms(*)), subject:subjects(*)')
         .eq('teacher_id', profile!.id)
       if (error) throw error
       return data as TeacherAssignment[]
     },
     enabled: !!profile?.id
+  })
+
+  const { data: sections = [] } = useQuery({
+    queryKey: ['broadsheet-sections', schoolId],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('school_sections').select('*').eq('school_id', schoolId!).order('order_index')
+      if (error) throw error
+      return data as SchoolSection[]
+    },
+    enabled: !!schoolId
   })
 
   const uniqueClasses = useMemo(() => {
@@ -153,11 +164,24 @@ export default function BroadsheetPage() {
           <Select value={selectedClassId} onValueChange={setSelectedClassId}>
             <SelectTrigger className="max-w-xs"><SelectValue placeholder="Select a class" /></SelectTrigger>
             <SelectContent>
-              {uniqueClasses.map(cls => (
-                <SelectItem key={cls.id} value={cls.id}>
-                  {cls.class_level?.name}{cls.class_arm ? ' ' + cls.class_arm.name : ''}
-                </SelectItem>
-              ))}
+              {sections.length > 0 ? (
+                groupBySection(uniqueClasses, c => c.class_level, sections).map(group => (
+                  <SelectGroup key={group.section?.id ?? 'ungrouped'}>
+                    <SelectLabel>{group.section?.name ?? 'Ungrouped'}</SelectLabel>
+                    {group.items.map(cls => (
+                      <SelectItem key={cls.id} value={cls.id}>
+                        {cls.class_level?.name}{cls.class_arm ? ' ' + cls.class_arm.name : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                ))
+              ) : (
+                uniqueClasses.map(cls => (
+                  <SelectItem key={cls.id} value={cls.id}>
+                    {cls.class_level?.name}{cls.class_arm ? ' ' + cls.class_arm.name : ''}
+                  </SelectItem>
+                ))
+              )}
             </SelectContent>
           </Select>
         </CardContent>
@@ -183,18 +207,21 @@ export default function BroadsheetPage() {
       ) : (
         <Card>
           <CardContent className="p-0">
-            <Table>
+            <Table containerClassName="max-h-[70vh]">
               <TableHeader>
                 <TableRow>
-                  {isFormTeacherForClass && <TableHead className="sticky left-0 bg-background z-10 w-10">Pos</TableHead>}
-                  <TableHead className={isFormTeacherForClass ? 'sticky left-10 bg-background z-10' : 'sticky left-0 bg-background z-10'}>Student</TableHead>
+                  {/* Both corner cells (Pos + Student when present) are
+                      sticky on both axes — highest z-index tier, same
+                      reasoning as ScoreEntryPage. */}
+                  {isFormTeacherForClass && <TableHead className="sticky left-0 top-0 z-30 bg-background w-10">Pos</TableHead>}
+                  <TableHead className={isFormTeacherForClass ? 'sticky left-10 top-0 z-30 bg-background' : 'sticky left-0 top-0 z-30 bg-background'}>Student</TableHead>
                   {visibleSubjects.map(s => (
-                    <TableHead key={s.id} className="text-center whitespace-nowrap">{s.code ?? s.name.slice(0, 3).toUpperCase()}</TableHead>
+                    <TableHead key={s.id} className="sticky top-0 z-20 bg-background text-center whitespace-nowrap">{s.code ?? s.name.slice(0, 3).toUpperCase()}</TableHead>
                   ))}
                   {isFormTeacherForClass && (
                     <>
-                      <TableHead className="text-center font-semibold">Total</TableHead>
-                      <TableHead className="text-center font-semibold">Average</TableHead>
+                      <TableHead className="sticky top-0 z-20 bg-background text-center font-semibold">Total</TableHead>
+                      <TableHead className="sticky top-0 z-20 bg-background text-center font-semibold">Average</TableHead>
                     </>
                   )}
                 </TableRow>
@@ -203,14 +230,14 @@ export default function BroadsheetPage() {
                 {rows.map((row, idx) => (
                   <TableRow key={row.student.id}>
                     {isFormTeacherForClass && (
-                      <TableCell className="sticky left-0 bg-background">
+                      <TableCell className="sticky left-0 z-10 bg-background">
                         <div className="flex items-center gap-1">
                           {idx === 0 && <Trophy className="h-3.5 w-3.5 text-yellow-500" />}
                           <span className="text-sm font-medium">{ordinalSuffix(idx + 1)}</span>
                         </div>
                       </TableCell>
                     )}
-                    <TableCell className={`sticky bg-background font-medium text-sm whitespace-nowrap ${isFormTeacherForClass ? 'left-10' : 'left-0'}`}>
+                    <TableCell className={`sticky z-10 bg-background font-medium text-sm whitespace-nowrap ${isFormTeacherForClass ? 'left-10' : 'left-0'}`}>
                       {row.student.last_name}, {row.student.first_name}
                     </TableCell>
                     {visibleSubjects.map(s => (

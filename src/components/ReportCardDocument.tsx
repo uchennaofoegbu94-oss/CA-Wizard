@@ -110,7 +110,7 @@ export const ReportCardDocument = forwardRef<HTMLDivElement, ReportCardDocumentP
   return (
     <div
       ref={ref}
-      className="relative bg-white px-7 py-6 flex flex-col"
+      className="relative bg-white force-light-surface px-7 py-6 flex flex-col"
       style={{ borderTop: `5px solid ${primaryColor}`, fontSize: '10.5px', width: PAGE_WIDTH_PX, height: PAGE_HEIGHT_PX }}
     >
       {school?.watermark_url && (

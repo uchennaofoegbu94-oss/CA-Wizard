@@ -8,7 +8,8 @@ import { Button } from '@/components/ui/button'
 import { PageHeader, EmptyState, Spinner } from '@/components/ui/table'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Link } from 'react-router-dom'
-import type { TeacherAssignment, Student } from '@/types'
+import { groupBySection } from '@/lib/sections'
+import type { TeacherAssignment, Student, SchoolSection } from '@/types'
 
 export default function TeacherClassesPage() {
   const { profile, schoolId } = useAuth()
@@ -20,7 +21,7 @@ export default function TeacherClassesPage() {
         .from('teacher_assignments')
         .select(`
           *,
-          class:classes(*, class_level:class_levels(*), class_arm:class_arms(*)),
+          class:classes(*, class_level:class_levels(*, section:school_sections(*)), class_arm:class_arms(*)),
           subject:subjects(*)
         `)
         .eq('teacher_id', profile!.id)
@@ -28,6 +29,16 @@ export default function TeacherClassesPage() {
       return data as TeacherAssignment[]
     },
     enabled: !!profile?.id
+  })
+
+  const { data: sections = [] } = useQuery({
+    queryKey: ['teacher-classes-sections', schoolId],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('school_sections').select('*').eq('school_id', schoolId!).order('order_index')
+      if (error) throw error
+      return data as SchoolSection[]
+    },
+    enabled: !!schoolId
   })
 
   // Unique classes from assignments
@@ -40,6 +51,8 @@ export default function TeacherClassesPage() {
     }
     return acc
   }, [])
+
+  const groupedClasses = groupBySection(uniqueClasses, item => item.cls?.class_level, sections)
 
   // Student counts per class
   const { data: enrollments = [] } = useQuery({
@@ -76,49 +89,60 @@ export default function TeacherClassesPage() {
           description="Ask your school admin for an invite code to get assigned to a class."
         />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {uniqueClasses.map(({ classId, cls, subjects }) => (
-            <Card key={classId} className="hover:border-brand-300 transition-colors">
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-lg bg-brand-100 flex items-center justify-center shrink-0">
-                      <GraduationCap className="h-5 w-5 text-brand-700" />
-                    </div>
-                    <div>
-                      <CardTitle className="text-base">
-                        {cls?.class_level?.name} {cls?.class_arm?.name}
-                      </CardTitle>
-                      <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                        <Users className="h-3 w-3" />
-                        {studentCount(classId)} student{studentCount(classId) !== 1 ? 's' : ''}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="pt-0">
-                {/* Subjects */}
-                <div className="flex flex-wrap gap-1.5 mb-4">
-                  {subjects.length === 0 ? (
-                    <Badge variant="secondary" className="text-xs">Form Teacher</Badge>
-                  ) : (
-                    subjects.map((s: any) => (
-                      <Badge key={s.id} variant="secondary" className="text-xs">{s.name}</Badge>
-                    ))
-                  )}
-                </div>
+        <div className="space-y-6">
+          {groupedClasses.map(group => (
+            <div key={group.section?.id ?? 'ungrouped'}>
+              {sections.length > 0 && (
+                <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+                  {group.section?.name ?? 'Ungrouped'}
+                </h2>
+              )}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {group.items.map(({ classId, cls, subjects }) => (
+                  <Card key={classId} className="hover:border-brand-300 transition-colors">
+                    <CardHeader className="pb-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-3">
+                          <div className="h-10 w-10 rounded-lg bg-brand-100 flex items-center justify-center shrink-0">
+                            <GraduationCap className="h-5 w-5 text-brand-700" />
+                          </div>
+                          <div>
+                            <CardTitle className="text-base">
+                              {cls?.class_level?.name} {cls?.class_arm?.name}
+                            </CardTitle>
+                            <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                              <Users className="h-3 w-3" />
+                              {studentCount(classId)} student{studentCount(classId) !== 1 ? 's' : ''}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="pt-0">
+                      {/* Subjects */}
+                      <div className="flex flex-wrap gap-1.5 mb-4">
+                        {subjects.length === 0 ? (
+                          <Badge variant="secondary" className="text-xs">Form Teacher</Badge>
+                        ) : (
+                          subjects.map((s: any) => (
+                            <Badge key={s.id} variant="secondary" className="text-xs">{s.name}</Badge>
+                          ))
+                        )}
+                      </div>
 
-                {/* Students table preview */}
-                <StudentRoster classId={classId} schoolId={schoolId!} />
+                      {/* Students table preview */}
+                      <StudentRoster classId={classId} schoolId={schoolId!} />
 
-                <div className="mt-3">
-                  <Button size="sm" className="w-full" asChild>
-                    <Link to={`/teacher/scores?class=${classId}`}>Enter Scores →</Link>
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+                      <div className="mt-3">
+                        <Button size="sm" className="w-full" asChild>
+                          <Link to={`/teacher/scores?class=${classId}`}>Enter Scores →</Link>
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
           ))}
         </div>
       )}

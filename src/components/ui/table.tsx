@@ -2,10 +2,16 @@ import * as React from 'react'
 import { cn } from '@/lib/utils'
 
 // ─── Table ────────────────────────────────────────────────
-
-const Table = React.forwardRef<HTMLTableElement, React.HTMLAttributes<HTMLTableElement>>(
-  ({ className, ...props }, ref) => (
-    <div className="relative w-full overflow-auto">
+// containerClassName targets the OUTER scroll wrapper (e.g. a bounded
+// `max-h-*` to create a fixed-height scroll frame, needed for a
+// sticky <TableHeader> to actually freeze in place rather than just
+// scrolling off with the rest of the page) — separate from
+// `className`, which still only reaches the inner <table> element as
+// before. Every existing usage that doesn't pass containerClassName
+// behaves exactly as it did previously.
+const Table = React.forwardRef<HTMLTableElement, React.HTMLAttributes<HTMLTableElement> & { containerClassName?: string }>(
+  ({ className, containerClassName, ...props }, ref) => (
+    <div className={cn('relative w-full overflow-auto', containerClassName)}>
       <table ref={ref} className={cn('w-full caption-bottom text-sm', className)} {...props} />
     </div>
   )

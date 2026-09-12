@@ -58,6 +58,22 @@
     --input: 215.4 16.3% 46.9%;
     --ring: 221.2 83.2% 53.3%;
     --radius: 0.5rem;
+    /* Without this, browsers fall back to the OS's raw dark/light
+       preference for native form-control auto-styling (the pairing
+       of default text/background colors a browser supplies for
+       anything the page doesn't explicitly style) — independent of
+       and blind to which of THIS app's own two themes (:root vs
+       .dark) is actually active on the page. That mismatch is what
+       made score figures unreadable in Score Entry on an OS set to
+       dark: the input's background was correctly white (:root's
+       theme, explicitly set via bg-background), but with no
+       color-scheme declared, some browsers still supplied a
+       dark-mode-appropriate (light-colored) native text color for
+       the unstyled parts of the control — light text on a white
+       background. Declaring color-scheme per theme block keeps
+       native form-control rendering locked to whichever theme is
+       actually in effect, never the OS's independent preference. */
+    color-scheme: light;
   }
 
   .dark {
@@ -80,6 +96,7 @@
     --border: 217.2 32.6% 17.5%;
     --input: 215.4 16.3% 46.9%;
     --ring: 217.2 91.2% 59.8%;
+    color-scheme: dark;
   }
 }
 
@@ -141,8 +158,23 @@
    the landing page, the rest of the marketing site, and the
    auth (login/register) pages. */
 .bg-dot-pattern {
-  background-image: radial-gradient(hsl(var(--foreground) / 0.09) 1px, transparent 1px);
+  /* Tuned separately per theme, not a single fixed value — a near-
+     black dot at a given opacity on a white background reads as far
+     fainter to the eye than a near-white dot at that same opacity on
+     a near-black background (this is why the pattern looked like it
+     "wasn't applying" on the pages that use the app's default LIGHT
+     theme — About/Blog/Get Involved/the individual blog post page —
+     while it read fine on the pages that force .dark, like the
+     landing page: same rule, same opacity, genuinely different
+     perceived contrast). 0.16 is the light-theme (default, :root)
+     value; the .dark override below keeps the original, already-
+     correct 0.09 rather than also bumping it and overshooting into
+     "not actually subtle anymore" territory. */
+  background-image: radial-gradient(hsl(var(--foreground) / 0.16) 1px, transparent 1px);
   background-size: 28px 28px;
+}
+.dark .bg-dot-pattern {
+  background-image: radial-gradient(hsl(var(--foreground) / 0.09) 1px, transparent 1px);
 }
 
 /* Auth pages' own background (dot pattern layered directly over the
@@ -162,5 +194,53 @@
     radial-gradient(rgba(255, 255, 255, 0.09) 1px, transparent 1px),
     linear-gradient(to bottom right, #0f172a 0%, #172554 50%, #1e3a8a 100%);
   background-size: 28px 28px, auto;
+}
+
+/* "Always renders as printed white paper, regardless of the app's
+   current theme." Root cause of the disappearing-text bug on the
+   broadsheet, report cards, and transcripts: those components force
+   a literal bg-white background (correct — a report card is meant to
+   look like white paper whether the app around it is in light or
+   dark mode), but the TEXT inside them uses the app's ordinary
+   theme-adaptive classes (text-foreground, text-muted-foreground,
+   the shared Table component's default text color, etc.), which read
+   --foreground from whatever theme is active on an ANCESTOR element
+   — including .dark, which the app's real site-wide theme toggle
+   (ThemeContext) applies to <html> itself. In dark mode, --foreground
+   resolves to near-white, landing on a hardcoded white background:
+   invisible white-on-white text. Switching back to light mode makes
+   --foreground resolve dark again, which is why toggling the theme
+   "sometimes" fixed it — but only for this specific bug, not for the
+   unrelated native-form-control issue elsewhere in this file, which
+   is why it didn't "always" help.
+   The fix: redeclare the same CSS custom property NAMES the rest of
+   the app already uses, scoped to this class, pinned to their light-
+   theme values — so every existing text-foreground/text-muted-
+   foreground/etc class used inside keeps working completely
+   unmodified, and simply always resolves correctly here no matter
+   what .dark is doing on an ancestor. Apply this class directly on
+   the same element that has bg-white. */
+.force-light-surface {
+  --background: 0 0% 100%;
+  --foreground: 222.2 84% 4.9%;
+  --card: 0 0% 100%;
+  --card-foreground: 222.2 84% 4.9%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222.2 84% 4.9%;
+  --primary: 221.2 83.2% 53.3%;
+  --primary-foreground: 210 40% 98%;
+  --secondary: 210 40% 96.1%;
+  --secondary-foreground: 222.2 47.4% 11.2%;
+  --muted: 210 40% 96.1%;
+  --muted-foreground: 215.4 16.3% 46.9%;
+  --accent: 210 40% 96.1%;
+  --accent-foreground: 222.2 47.4% 11.2%;
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 210 40% 98%;
+  --border: 214.3 31.8% 91.4%;
+  --input: 215.4 16.3% 46.9%;
+  --ring: 221.2 83.2% 53.3%;
+  color-scheme: light;
+  color: hsl(var(--foreground));
 }
 

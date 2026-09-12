@@ -72,11 +72,21 @@ export interface Term {
   updated_at: string
 }
 
+export interface SchoolSection {
+  id: string
+  school_id: string
+  name: string
+  order_index: number
+  created_at: string
+}
+
 export interface ClassLevel {
   id: string
   school_id: string
   name: string
   order_index: number
+  section_id: string | null
+  section?: SchoolSection | null
   created_at: string
 }
 

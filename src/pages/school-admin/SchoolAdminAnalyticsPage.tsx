@@ -60,9 +60,9 @@ export default function SchoolAdminAnalyticsPage() {
   const { data: classes = [] } = useQuery({
     queryKey: ['analytics-school-classes', schoolId, currentSession?.id],
     queryFn: async () => {
-      const { data, error } = await supabase.from('classes').select('id, class_level:class_levels(name)').eq('school_id', schoolId!).eq('session_id', currentSession!.id)
+      const { data, error } = await supabase.from('classes').select('id, class_level:class_levels(name, section:school_sections(name))').eq('school_id', schoolId!).eq('session_id', currentSession!.id)
       if (error) throw error
-      return data as unknown as { id: string; class_level: { name: string } | null }[]
+      return data as unknown as { id: string; class_level: { name: string; section: { name: string } | null } | null }[]
     },
     enabled: !!schoolId && !!currentSession
   })
@@ -190,6 +190,25 @@ export default function SchoolAdminAnalyticsPage() {
       .sort((a, b) => b.average - a.average)
   }, [termResults, classes])
 
+  // Fully opt-in, same as everywhere else this feature shows up: a
+  // school that's never configured any sections has every class's
+  // section come back null here, hasSections is false, and this
+  // chart just doesn't render — Average Score by Class above is
+  // unaffected either way.
+  const hasSections = useMemo(() => classes.some(c => c.class_level?.section), [classes])
+
+  const averageBySection = useMemo(() => {
+    const bySection: Record<string, number[]> = {}
+    termResults.forEach(r => {
+      const name = classes.find(c => c.id === r.class_id)?.class_level?.section?.name ?? 'Ungrouped'
+      if (!bySection[name]) bySection[name] = []
+      bySection[name].push(r.percentage)
+    })
+    return Object.entries(bySection)
+      .map(([name, scores]) => ({ name, average: Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10 }))
+      .sort((a, b) => b.average - a.average)
+  }, [termResults, classes])
+
   const attendanceRate = useMemo(() => {
     if (attendance.length === 0) return null
     const totalPresent = attendance.reduce((sum, a) => sum + a.days_present, 0)
@@ -309,6 +328,29 @@ export default function SchoolAdminAnalyticsPage() {
             )}
           </CardContent>
         </Card>
+
+        {hasSections && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Average Score by Section</CardTitle>
+              <CardDescription>{currentTerm ? currentTerm.name : 'No current term set'}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {averageBySection.length === 0 ? (
+                <EmptyState title="No scores recorded yet" />
+              ) : (
+                <ResponsiveContainer width="100%" height={Math.max(200, averageBySection.length * 32)}>
+                  <BarChart data={averageBySection} layout="vertical" margin={{ left: 8 }}>
+                    <XAxis type="number" domain={[0, 100]} fontSize={11} />
+                    <YAxis type="category" dataKey="name" fontSize={10} width={90} />
+                    <Tooltip />
+                    <Bar dataKey="average" fill="#8b5cf6" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

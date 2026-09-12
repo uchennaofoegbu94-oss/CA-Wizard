@@ -8,26 +8,33 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Link } from 'react-router-dom'
-import type { TeacherAssignment, Term } from '@/types'
+import type { TeacherAssignment, Term, SchoolSection } from '@/types'
+import { groupBySection } from '@/lib/sections'
 
 async function fetchTeacherDashboard(profileId: string, schoolId: string) {
-  const [assignments, currentTerm] = await Promise.all([
+  const [assignments, currentTerm, sections] = await Promise.all([
     supabase
       .from('teacher_assignments')
-      .select('*, class:classes(*, class_level:class_levels(*), class_arm:class_arms(*)), subject:subjects(*)')
+      .select('*, class:classes(*, class_level:class_levels(*, section:school_sections(*)), class_arm:class_arms(*)), subject:subjects(*)')
       .eq('teacher_id', profileId),
     supabase
       .from('terms')
       .select('*')
       .eq('school_id', schoolId)
       .eq('is_current', true)
-      .single()
+      .single(),
+    supabase
+      .from('school_sections')
+      .select('*')
+      .eq('school_id', schoolId)
+      .order('order_index')
   ])
 
   return {
     assignments: (assignments.data ?? []) as TeacherAssignment[],
     currentTerm: currentTerm.data as Term | null,
-    uniqueClasses: [...new Set((assignments.data ?? []).map(a => a.class_id))].length
+    uniqueClasses: [...new Set((assignments.data ?? []).map(a => a.class_id))].length,
+    sections: (sections.data ?? []) as SchoolSection[]
   }
 }
 
@@ -124,26 +131,37 @@ export default function TeacherDashboard() {
               No assignments yet. Ask your school admin for an invite code.
             </p>
           ) : (
-            <div className="space-y-3">
-              {data?.assignments.map(a => (
-                <div key={a.id} className="flex items-center justify-between rounded-lg border p-3">
-                  <div className="flex items-center gap-3">
-                    <div className="h-9 w-9 rounded-md bg-brand-100 flex items-center justify-center">
-                      <GraduationCap className="h-4 w-4 text-brand-700" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium">
-                        {a.class?.class_level?.name} {a.class?.class_arm?.name}
-                        {a.subject && ` — ${a.subject.name}`}
-                      </p>
-                      <p className="text-xs text-muted-foreground capitalize">{a.scope.toLowerCase()} assignment</p>
-                    </div>
+            <div className="space-y-4">
+              {groupBySection(data?.assignments ?? [], a => a.class?.class_level, data?.sections ?? []).map(group => (
+                <div key={group.section?.id ?? 'ungrouped'}>
+                  {(data?.sections.length ?? 0) > 0 && (
+                    <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                      {group.section?.name ?? 'Ungrouped'}
+                    </h3>
+                  )}
+                  <div className="space-y-3">
+                    {group.items.map(a => (
+                      <div key={a.id} className="flex items-center justify-between rounded-lg border p-3">
+                        <div className="flex items-center gap-3">
+                          <div className="h-9 w-9 rounded-md bg-brand-100 flex items-center justify-center">
+                            <GraduationCap className="h-4 w-4 text-brand-700" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium">
+                              {a.class?.class_level?.name} {a.class?.class_arm?.name}
+                              {a.subject && ` — ${a.subject.name}`}
+                            </p>
+                            <p className="text-xs text-muted-foreground capitalize">{a.scope.toLowerCase()} assignment</p>
+                          </div>
+                        </div>
+                        <Button size="sm" variant="outline" asChild>
+                          <Link to={`/teacher/scores?class=${a.class_id}&subject=${a.subject_id ?? ''}`}>
+                            Enter
+                          </Link>
+                        </Button>
+                      </div>
+                    ))}
                   </div>
-                  <Button size="sm" variant="outline" asChild>
-                    <Link to={`/teacher/scores?class=${a.class_id}&subject=${a.subject_id ?? ''}`}>
-                      Enter
-                    </Link>
-                  </Button>
                 </div>
               ))}
             </div>
