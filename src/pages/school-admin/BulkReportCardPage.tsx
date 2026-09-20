@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft, Download, FileArchive, Loader2 } from 'lucide-react'
+import { ArrowLeft, Download, FileArchive, Loader2, Save } from 'lucide-react'
 import JSZip from 'jszip'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
@@ -34,12 +34,18 @@ function gradeFor(percentage: number, ranges: GradeRange[]): { grade: string; re
 // (for printing the whole class as a batch) and a zip of
 // individually-named PDFs (for emailing/distributing per student).
 export default function BulkReportCardPage() {
-  const { schoolId, subscriptionTier } = useAuth()
+  const { schoolId, subscriptionTier, profile, role } = useAuth()
   const [params] = useSearchParams()
   const classId = params.get('class') ?? ''
   const termId = params.get('term') ?? ''
   const sessionId = params.get('session') ?? ''
-  const backToReportsUrl = `/school/reports?session=${sessionId}&class=${classId}&term=${termId}`
+  // A section admin (still role 'teacher') reaches this same page via
+  // their own Documents tab rather than the school-admin Reports
+  // picker — send "back" there instead, or the link would 404 into a
+  // route they don't have access to.
+  const backToReportsUrl = role === 'teacher'
+    ? '/teacher/section-admin'
+    : `/school/reports?session=${sessionId}&class=${classId}&term=${termId}`
   const ready = !!classId && !!termId
 
   const [generating, setGenerating] = useState<'combined' | 'zip' | null>(null)
@@ -268,6 +274,54 @@ export default function BulkReportCardPage() {
   const classLabel = cls ? `${cls.class_level?.name ?? ''}${cls.class_arm ? ' ' + cls.class_arm.name : ''}`.trim() : ''
   const baseFilename = `${classLabel}_${term?.name ?? ''}_ReportCards`.replace(/\s+/g, '_')
 
+  // Bulk-save every student's report card snapshot in one round trip —
+  // Supabase's upsert() accepts an array, so this is a single query
+  // regardless of class size, not N individual saves. Builds the exact
+  // same snapshot_data shape ReportCardPage.tsx's single-student
+  // saveSnapshot does (school/student/class/term/fieldColumns/subjects/
+  // grandTotal/average/position/attendance/comment/affective/
+  // psychomotor), just sourced from perStudent (already computed above
+  // for the PDF render) instead of single-student query results.
+  const [savingSnapshots, setSavingSnapshots] = useState(false)
+
+  const saveBulkSnapshots = async () => {
+    if (perStudent.length === 0) return
+    setSavingSnapshots(true)
+    toast.loading(`Saving ${perStudent.length} snapshot${perStudent.length === 1 ? '' : 's'}…`, { id: 'bulk-snapshots' })
+    try {
+      const now = new Date().toISOString()
+      const rows = perStudent.map(p => {
+        const snapshotData = {
+          school: { name: school?.name, motto: school?.motto, address: school?.address },
+          student: { name: `${p.student.first_name} ${p.student.last_name}`, admission_number: p.student.admission_number, photo_url: p.student.photo_url ?? null },
+          class: classLabel,
+          term: term?.name,
+          fieldColumns,
+          subjects: p.rows,
+          grandTotal: p.grandTotal,
+          average: p.average,
+          position: p.position,
+          attendance: p.attendance ? { present: p.attendance.days_present, absent: p.attendance.days_absent, total: p.attendance.total_days } : null,
+          comment: p.comment ? { teacher: p.comment.teacher_comment, management: p.comment.management_comment } : null,
+          affective: affectiveMetrics.map(m => ({ name: m.name, rating: affectiveScores.find(s => s.metric_id === m.id && s.student_id === p.student.id)?.rating ?? null })),
+          psychomotor: psychomotorMetrics.map(m => ({ name: m.name, rating: psychomotorScores.find(s => s.metric_id === m.id && s.student_id === p.student.id)?.rating ?? null })),
+          generatedAt: now
+        }
+        return {
+          school_id: schoolId, student_id: p.student.id, term_id: termId, class_id: classId,
+          snapshot_data: snapshotData, generated_by: profile?.id ?? null, generated_at: now
+        }
+      })
+      const { error } = await supabase.from('report_snapshots').upsert(rows, { onConflict: 'student_id,term_id' })
+      if (error) throw error
+      toast.success(`${perStudent.length} report card snapshot${perStudent.length === 1 ? '' : 's'} saved — preserved even if scores change later`, { id: 'bulk-snapshots' })
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not save snapshots', { id: 'bulk-snapshots' })
+    } finally {
+      setSavingSnapshots(false)
+    }
+  }
+
   const generateCombined = async () => {
     if (perStudent.length === 0) return
     setGenerating('combined')
@@ -355,6 +409,10 @@ export default function BulkReportCardPage() {
           description={cls && term ? `${classLabel} — ${term.name}` : 'Loading…'}
           action={
             <div className="flex gap-2">
+              <Button variant="outline" onClick={saveBulkSnapshots} disabled={savingSnapshots || perStudent.length === 0}>
+                {savingSnapshots ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                Bulk Save Snapshots
+              </Button>
               <Button variant="outline" onClick={generateZip} disabled={!!generating || perStudent.length === 0}>
                 {generating === 'zip' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileArchive className="mr-2 h-4 w-4" />}
                 {generating === 'zip' ? `Zipping ${progress}/${perStudent.length}…` : 'Download Zip (per student)'}

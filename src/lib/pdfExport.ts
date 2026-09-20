@@ -7,8 +7,13 @@ import jsPDF from 'jspdf'
 // person manually disables it in their print dialog, which isn't
 // something a web app can control. A real generated PDF has none
 // of that by construction.
-export async function exportNodeToPdf(node: HTMLElement, filename: string): Promise<void> {
-  const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+//
+// orientation defaults to 'portrait' (unchanged for every existing
+// caller) — 'landscape' exists for wide tabular content (e.g. a
+// scores grid with many columns) where a portrait page would shrink
+// everything to the point of being unreadable.
+export async function exportNodeToPdf(node: HTMLElement, filename: string, orientation: 'portrait' | 'landscape' = 'portrait'): Promise<void> {
+  const pdf = new jsPDF({ orientation, unit: 'mm', format: 'a4' })
   await drawNodeIntoPdf(pdf, node, { startNewPage: false })
   pdf.save(filename)
 }

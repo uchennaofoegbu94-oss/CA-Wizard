@@ -232,6 +232,23 @@ export default function AssessmentsPage() {
     onError: (e: Error) => toast.error(e.message)
   })
 
+  // Read-only preview on Score Entry — display only, purely additive.
+  // Never touches how a field computes; the DB's own CHECK constraint
+  // (migration 048) already guarantees this can only ever be true for
+  // a computed field, so there's no separate guard needed here.
+  const toggleScoreEntryPreview = useMutation({
+    mutationFn: async ({ id, show_on_score_entry }: { id: string; show_on_score_entry: boolean }) => {
+      const { error } = await supabase.from('assessment_categories').update({ show_on_score_entry }).eq('id', id)
+      if (error) throw error
+      return { id, show_on_score_entry }
+    },
+    onSuccess: ({ id, show_on_score_entry }) => {
+      inv()
+      logAudit({ schoolId: schoolId!, userId: profile?.id ?? null, action: 'UPDATE', entityType: 'assessment_category', entityId: id, newValue: { show_on_score_entry } })
+    },
+    onError: (e: Error) => toast.error(e.message)
+  })
+
   // Designating a new Total field must unset the previous one first —
   // the DB has a hard constraint (at most one is_total_field=true per
   // school), so two sequential updates, not a single one.
@@ -352,6 +369,7 @@ export default function AssessmentsPage() {
                   <TableHead>Max / Computed From</TableHead>
                   <TableHead>Order</TableHead>
                   <TableHead>On Report Card</TableHead>
+                  <TableHead>Score Entry Preview</TableHead>
                   <TableHead>Active</TableHead>
                   <TableHead className="w-10" />
                 </TableRow>
@@ -395,6 +413,20 @@ export default function AssessmentsPage() {
                         >
                           {cat.show_on_report_card || cat.is_total_field ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
                         </button>
+                      </TableCell>
+                      <TableCell>
+                        {cat.field_type === 'computed' ? (
+                          <button
+                            onClick={() => toggleScoreEntryPreview.mutate({ id: cat.id, show_on_score_entry: !cat.show_on_score_entry })}
+                            className="text-muted-foreground hover:text-foreground"
+                            aria-label={cat.show_on_score_entry ? `Hide ${cat.name} from Score Entry preview` : `Show ${cat.name} as a read-only preview on Score Entry`}
+                            title="Lets teachers see this computed field's live value on Score Entry, read-only — helps them catch mistakes before the broadsheet does"
+                          >
+                            {cat.show_on_score_entry ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                          </button>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
                       </TableCell>
                       <TableCell>
                         <Switch

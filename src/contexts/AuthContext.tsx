@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react'
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react'
 import type { User, Session } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 import { logAudit } from '@/lib/audit'
@@ -35,6 +35,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [subscriptionTier, setSubscriptionTier] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  // Tracks the signed-in user id across renders without needing it in
+  // any effect's dependency array — see the onAuthStateChange handler
+  // below, which reads this synchronously to tell a genuine sign-in
+  // apart from a same-user token refresh.
+  const currentUserIdRef = useRef<string | null>(null)
 
   // Uses a SECURITY DEFINER RPC that bypasses RLS.
   // auth.uid() inside the function still scopes the result to the calling user —
@@ -70,6 +75,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session)
       setUser(session?.user ?? null)
+      currentUserIdRef.current = session?.user?.id ?? null
       if (session?.user) {
         fetchProfile().finally(() => setLoading(false))
       } else {
@@ -77,19 +83,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     })
 
-    // Listen for auth state changes (login, logout, token refresh)
+    // Listen for auth state changes (login, logout, token refresh).
+    // Supabase-js checks/refreshes the session whenever the browser tab
+    // regains visibility — on a long-lived page (like an open Score
+    // Entry session) that fires a TOKEN_REFRESHED event every time the
+    // person switches back from another tab, for the SAME user who was
+    // already signed in. Previously this handler treated every such
+    // event identically to a real sign-in: it re-ran the profile RPC
+    // (a network round trip) and replaced `session`/`user`/`profile`
+    // with fresh object references every time, which re-renders every
+    // consumer of useAuth() across the whole app on every tab-focus —
+    // exactly the "everything reloads when I switch tabs for a second"
+    // symptom. A genuine sign-in (or switching accounts) still needs
+    // all of that; a same-user token refresh doesn't need the profile
+    // re-fetched at all, since the profile itself hasn't changed just
+    // because the JWT was renewed — only the token-bearing `session`
+    // object needs updating so future API calls keep using a valid one.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        const isSameUser = !!session?.user && session.user.id === currentUserIdRef.current
+
+        if (event === 'TOKEN_REFRESHED' && isSameUser) {
+          setSession(session)
+          return
+        }
+
         // Show loading spinner in RequireGuest immediately on sign-in
         // so the login form disappears and the user sees a spinner
         // while the profile RPC resolves
-        if (event === 'SIGNED_IN') setLoading(true)
+        if (event === 'SIGNED_IN' && !isSameUser) setLoading(true)
 
         setSession(session)
         setUser(session?.user ?? null)
+        currentUserIdRef.current = session?.user?.id ?? null
 
         if (session?.user) {
-          await fetchProfile()
+          if (!isSameUser) await fetchProfile()
         } else {
           setProfile(null)
           setSubscriptionTier(null)
@@ -145,6 +174,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setSubscriptionTier(null)
     setUser(null)
     setSession(null)
+    currentUserIdRef.current = null
   }
 
   return (

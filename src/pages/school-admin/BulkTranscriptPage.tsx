@@ -23,15 +23,19 @@ const TERM_ORDER: Record<string, number> = { 'First Term': 0, 'Second Term': 1, 
 // cohort), with each student's full multi-session history compiled
 // independently — the class/term only pick WHO, not WHAT data goes in.
 export default function BulkTranscriptPage() {
-  const { schoolId, subscriptionTier } = useAuth()
+  const { schoolId, subscriptionTier, role } = useAuth()
   const [params] = useSearchParams()
   const classId = params.get('class') ?? ''
   const sessionId = params.get('session') ?? ''
   // No term param here — a transcript spans a student's entire history
   // regardless of term (see the comment above), so there's nothing to
   // carry back for term; ReportsPage falls back to its own current-term
-  // default when it's absent.
-  const backToReportsUrl = `/school/reports?session=${sessionId}&class=${classId}`
+  // default when it's absent. A section admin (still role 'teacher')
+  // has no access to that route at all — send them back to their own
+  // Documents tab instead.
+  const backToReportsUrl = role === 'teacher'
+    ? '/teacher/section-admin'
+    : `/school/reports?session=${sessionId}&class=${classId}`
   const ready = !!classId
 
   const [generating, setGenerating] = useState<'combined' | 'zip' | null>(null)

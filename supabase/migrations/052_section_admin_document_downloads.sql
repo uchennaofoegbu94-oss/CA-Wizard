@@ -1,0 +1,18 @@
+-- ============================================================
+-- 052: Section admin — document download permission
+-- ============================================================
+-- The 4th toggle, added exactly the way 049's own comment said a
+-- future one would be: one new column, no redesign of section_admins
+-- or its RLS. Unlike the other 3 (which each gate a genuinely new
+-- write path — see 049), this one does NOT need a new RLS policy:
+-- the underlying reads a report card / transcript / broadsheet needs
+-- (schools, classes, terms, subject_offerings, student_enrollments,
+-- student_scores, attendance, comments, affective/psychomotor scores,
+-- the get_class_all_fields/get_class_subject_term_results RPCs) were
+-- already SELECT-able by any school member long before section admins
+-- existed — reading a class's own data is core to a teacher's job.
+-- So this toggle is a UI/workflow gate (does the Documents tab show
+-- up, and which classes does its picker offer), the same as how every
+-- other permission here decides what the person is OFFERED to do, not
+-- a new data-access boundary — there isn't a gap to close.
+ALTER TABLE section_admins ADD COLUMN can_download_documents BOOLEAN NOT NULL DEFAULT FALSE;

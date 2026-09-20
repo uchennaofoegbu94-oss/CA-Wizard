@@ -3,9 +3,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Loader2, Settings, Image as ImageIcon, Palette, Upload, Stamp, PenLine } from 'lucide-react'
+import { Loader2, Settings, Image as ImageIcon, Palette, Upload, Stamp, PenLine, ShieldAlert } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
+import { logAudit } from '@/lib/audit'
 import {
   uploadSchoolLogo, uploadSchoolWatermark,
   uploadPrincipalSignature, uploadTeacherSignature, uploadSchoolStamp
@@ -14,10 +15,15 @@ import { Button } from '@/components/ui/button'
 import { Input, Textarea } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle
+} from '@/components/ui/dialog'
 import { PageHeader, Spinner } from '@/components/ui/table'
 import { FormField, FormGrid } from '@/components/ui/form-field'
 import toast from 'react-hot-toast'
-import type { School } from '@/types'
+import type { School, Profile } from '@/types'
 
 const schema = z.object({
   name:           z.string().min(3, 'Name must be at least 3 characters'),
@@ -48,7 +54,7 @@ const ASSET_CONFIG: Record<ImageAsset, {
 }
 
 export default function SettingsPage() {
-  const { schoolId } = useAuth()
+  const { schoolId, profile, refreshProfile } = useAuth()
   const qc = useQueryClient()
   const fileInputRefs = useRef<Record<ImageAsset, HTMLInputElement | null>>({
     logo: null, watermark: null, principal_signature: null, teacher_signature: null, stamp: null
@@ -56,6 +62,41 @@ export default function SettingsPage() {
   const [uploading, setUploading] = useState<ImageAsset | null>(null)
   const [primaryColor, setPrimaryColor] = useState('#1e3a8a')
   const [secondaryColor, setSecondaryColor] = useState('#3b82f6')
+  const [transferTargetId, setTransferTargetId] = useState('')
+  const [transferDialogOpen, setTransferDialogOpen] = useState(false)
+  const [transferConfirmText, setTransferConfirmText] = useState('')
+
+  const { data: activeTeachers = [] } = useQuery({
+    queryKey: ['active-teachers-for-transfer', schoolId],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('profiles').select('*').eq('school_id', schoolId!).eq('role', 'teacher').eq('is_active', true).order('first_name')
+      if (error) throw error
+      return data as Profile[]
+    },
+    enabled: !!schoolId
+  })
+
+  const transferAdmin = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.rpc('transfer_school_admin', { p_school_id: schoolId, p_new_admin_teacher_id: transferTargetId })
+      if (error) throw error
+    },
+    onSuccess: async () => {
+      const target = activeTeachers.find(t => t.id === transferTargetId)
+      logAudit({
+        schoolId: schoolId!, userId: profile?.id ?? null, action: 'PROMOTE', entityType: 'school_admin_transfer',
+        entityId: transferTargetId, newValue: { new_admin: target ? `${target.first_name} ${target.last_name}` : undefined }
+      })
+      toast.success('Admin role transferred — signing you out')
+      setTransferDialogOpen(false)
+      // Old admin (us) has just been deactivated by the RPC. Refresh
+      // the profile so RequireAuth's own is_active check picks it up
+      // and signs us out through the app's normal path, rather than
+      // duplicating that logic here.
+      await refreshProfile()
+    },
+    onError: (e: Error) => toast.error(e.message)
+  })
 
   const { data: school, isLoading } = useQuery({
     queryKey: ['school-settings', schoolId],
@@ -271,7 +312,54 @@ export default function SettingsPage() {
             </Button>
           </div>
         </form>
+
+        {/* Transfer Admin Role — danger zone */}
+        <Card className="border-destructive/30">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2 text-destructive"><ShieldAlert className="h-4 w-4" />Transfer Admin Role</CardTitle>
+            <CardDescription>Hand off school admin access to another active teacher. You will immediately lose admin access yourself — this cannot be undone by you afterward (only the new admin or a super admin could transfer it back).</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <FormField label="New Admin" hint="Only active teachers at this school can be selected">
+              <Select value={transferTargetId} onValueChange={setTransferTargetId}>
+                <SelectTrigger className="max-w-sm"><SelectValue placeholder="Select a teacher" /></SelectTrigger>
+                <SelectContent>
+                  {activeTeachers.map(t => <SelectItem key={t.id} value={t.id}>{t.first_name} {t.last_name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </FormField>
+            <Button
+              variant="destructive" className="mt-4"
+              disabled={!transferTargetId}
+              onClick={() => { setTransferConfirmText(''); setTransferDialogOpen(true) }}
+            >
+              Transfer Admin Role
+            </Button>
+          </CardContent>
+        </Card>
       </div>
+
+      <AlertDialog open={transferDialogOpen} onOpenChange={setTransferDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Transfer admin role?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {activeTeachers.find(t => t.id === transferTargetId)?.first_name} {activeTeachers.find(t => t.id === transferTargetId)?.last_name} will become the school admin. You will be signed out immediately and lose admin access. Type TRANSFER below to confirm.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <Input value={transferConfirmText} onChange={e => setTransferConfirmText(e.target.value)} placeholder="TRANSFER" autoFocus />
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={transferConfirmText !== 'TRANSFER' || transferAdmin.isPending}
+              onClick={() => transferAdmin.mutate()}
+            >
+              {transferAdmin.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Confirm Transfer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

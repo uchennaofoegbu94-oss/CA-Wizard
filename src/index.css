@@ -241,6 +241,28 @@
   --input: 215.4 16.3% 46.9%;
   --ring: 221.2 83.2% 53.3%;
   color-scheme: light;
-  color: hsl(var(--foreground));
+  /* Literal value, not var(--foreground) — belt-and-suspenders on top
+     of the custom-property redeclaration above. Two independent
+     defenses because the actual failure mode was never fully
+     confirmed: it may be a live-DOM cascade issue, or it may be
+     html2canvas (used for the PDF/PNG export of these same
+     documents) failing to resolve a CSS custom property correctly —
+     a known limitation in some html2canvas versions, since it parses
+     styles independently of the browser's own rendering rather than
+     reading already-resolved computed values. A literal value can't
+     fail to resolve either way. */
+  color: #0f172a;
+}
+
+/* Same reasoning, scoped specifically to text-muted-foreground since
+   that's the class actually used throughout ReportCardDocument,
+   TranscriptDocument, and the admin broadsheet's labels/captions.
+   Two classes (higher specificity than plain .text-muted-foreground
+   alone) reliably wins on the CSS cascade regardless of stylesheet
+   source order — no !important needed, so this can never
+   accidentally clobber the school-brand primaryColor/secondaryColor
+   inline-styled headings elsewhere in the same documents. */
+.force-light-surface .text-muted-foreground {
+  color: #64748b;
 }
 

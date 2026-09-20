@@ -4,11 +4,13 @@ import {
   LayoutDashboard, School, Users, BookOpen, GraduationCap,
   ClipboardList, Settings, LogOut, Menu, X, ChevronDown,
   Wifi, WifiOff, AlertCircle, TrendingUp, FileText,
-  Globe, Archive, LifeBuoy, Building2, Megaphone, Newspaper, Info
+  Globe, Archive, LifeBuoy, Building2, Megaphone, Newspaper, Info, ShieldCheck
 } from 'lucide-react'
 import { cn, initials } from '@/lib/utils'
 import { useAuth } from '@/contexts/AuthContext'
 import { useNetwork } from '@/contexts/NetworkContext'
+import { useQuery } from '@tanstack/react-query'
+import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/badge'
 import {
@@ -53,6 +55,7 @@ const SCHOOL_ADMIN_NAV: NavItem[] = [
   { label: 'Students',    to: '/school/students',    icon: Users },
   { label: 'Subjects',    to: '/school/subjects',    icon: BookOpen },
   { label: 'Teachers',    to: '/school/teachers',    icon: Users },
+  { label: 'Section Admins', to: '/school/section-admins', icon: ShieldCheck },
   { label: 'Assessments', to: '/school/assessments', icon: ClipboardList },
   { label: 'Grading',     to: '/school/grading',     icon: ClipboardList },
   { label: 'Promotion',   to: '/school/promotion',   icon: TrendingUp },
@@ -75,17 +78,34 @@ const TEACHER_NAV: NavItem[] = [
   { label: 'Support',    to: '/teacher/support',    icon: LifeBuoy }
 ]
 
+const SECTION_ADMIN_NAV_ITEM: NavItem = { label: 'Section Admin', to: '/teacher/section-admin', icon: ShieldCheck }
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { profile, role, signOut } = useAuth()
   const { isOnline, pendingSyncCount } = useNetwork()
   const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
+  // Only a teacher who actually holds at least one section_admins grant
+  // sees the extra nav item — everyone else's teacher nav is exactly
+  // what it always was. A lightweight count-only query (no row data
+  // needed here), gated to the teacher role so it never fires for
+  // other roles.
+  const { data: sectionAdminGrantCount = 0 } = useQuery({
+    queryKey: ['my-section-admin-grant-count', profile?.id],
+    queryFn: async () => {
+      const { count, error } = await supabase.from('section_admins').select('id', { count: 'exact', head: true }).eq('teacher_id', profile!.id)
+      if (error) throw error
+      return count ?? 0
+    },
+    enabled: role === 'teacher' && !!profile?.id
+  })
+
   const nav =
     role === 'super_admin' ? SUPER_ADMIN_NAV :
     role === 'school_admin' ? SCHOOL_ADMIN_NAV :
     role === 'group_admin' ? GROUP_ADMIN_NAV :
-    TEACHER_NAV
+    sectionAdminGrantCount > 0 ? [...TEACHER_NAV, SECTION_ADMIN_NAV_ITEM] : TEACHER_NAV
 
   const handleSignOut = async () => {
     await signOut()

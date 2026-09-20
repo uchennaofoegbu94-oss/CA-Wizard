@@ -22,15 +22,20 @@ function gradeFor(percentage: number, ranges: GradeRange[]): { grade: string; re
 }
 
 export default function ReportCardPage() {
-  const { schoolId, profile } = useAuth()
+  const { schoolId, profile, role } = useAuth()
   const [params] = useSearchParams()
   const studentId = params.get('student') ?? ''
   const classId = params.get('class') ?? ''
   const termId = params.get('term') ?? ''
   const sessionId = params.get('session') ?? ''
   // Carries the same session/class/term straight back to Reports so
-  // the view an admin was on (not a blank one) is what they land on.
-  const backToReportsUrl = `/school/reports?session=${sessionId}&class=${classId}&term=${termId}`
+  // the view an admin was on (not a blank one) is what they land on —
+  // except for a section admin (still role 'teacher'), who reaches
+  // this page from their own Documents tab and has no access to the
+  // school-admin Reports route to go back to.
+  const backToReportsUrl = role === 'teacher'
+    ? '/teacher/section-admin'
+    : `/school/reports?session=${sessionId}&class=${classId}&term=${termId}`
   const printRef = useRef<HTMLDivElement>(null)
 
   const ready = !!studentId && !!classId && !!termId

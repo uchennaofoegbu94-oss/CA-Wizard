@@ -72,7 +72,13 @@ export default function StudentsPage() {
   const photoInputRef = useRef<HTMLInputElement>(null)
 
   const [search, setSearch] = useState('')
-  const [showInactive, setShowInactive] = useState(false)
+  // Status filter defaults to 'active' (same default view as before this
+  // feature existed); 'all' plus each individual StudentStatus are also
+  // selectable. Class filter is separate/independent: 'all' | 'unenrolled'
+  // | a specific class id. Both are applied client-side in `filtered`
+  // below, alongside the existing name/admission-number search.
+  const [statusFilter, setStatusFilter] = useState<'all' | StudentStatus>('active')
+  const [classFilter, setClassFilter] = useState<string>('all')
   const [view, setView] = useState<ViewMode>('list')
   const [studentDialog, setStudentDialog] = useState<Student | 'new' | null>(null)
   const [statusTarget, setStatusTarget] = useState<{ student: Student; action: 'deactivate' | 'graduate' | 'transfer_out' } | null>(null)
@@ -93,12 +99,15 @@ export default function StudentsPage() {
     enabled: !!schoolId
   })
 
+  // Fetches every status now (status filtering happens client-side below,
+  // alongside the new class filter) rather than conditionally querying
+  // only active students — a school's full roster is small enough that
+  // this is simpler than juggling two query variants, and it's what lets
+  // the status dropdown switch instantly with no refetch.
   const { data: students = [], isLoading: loadingStudents } = useQuery({
-    queryKey: ['students', schoolId, showInactive],
+    queryKey: ['students', schoolId],
     queryFn: async () => {
-      let query = supabase.from('students').select('*').eq('school_id', schoolId!)
-      if (!showInactive) query = query.eq('status', 'active')
-      const { data, error } = await query.order('last_name')
+      const { data, error } = await supabase.from('students').select('*').eq('school_id', schoolId!).order('last_name')
       if (error) throw error
       return data as Student[]
     },
@@ -372,9 +381,18 @@ export default function StudentsPage() {
     onError: (e: Error) => toast.error(e.message)
   })
 
-  const filtered = students.filter(s =>
-    `${s.first_name} ${s.last_name} ${s.admission_number}`.toLowerCase().includes(search.toLowerCase())
-  )
+  const filtered = students.filter(s => {
+    if (statusFilter !== 'all' && s.status !== statusFilter) return false
+    if (classFilter !== 'all') {
+      const enrollment = enrollmentFor(s.id)
+      if (classFilter === 'unenrolled') {
+        if (enrollment) return false
+      } else if (enrollment?.class_id !== classFilter) {
+        return false
+      }
+    }
+    return `${s.first_name} ${s.last_name} ${s.admission_number}`.toLowerCase().includes(search.toLowerCase())
+  })
 
   // Phase 5: simple client-side pagination — schools with large
   // rosters (300+ students) were rendering every row at once
@@ -444,7 +462,7 @@ export default function StudentsPage() {
 
       <PageHeader
         title="Students"
-        description={`${students.length} student${students.length !== 1 ? 's' : ''}${showInactive ? ' (all statuses)' : ''}`}
+        description={`${filtered.length} of ${students.length} student${students.length !== 1 ? 's' : ''}${statusFilter === 'all' ? ' (all statuses)' : ''}`}
         action={
           <Button onClick={openNew} disabled={atStudentCap}>
             <Plus className="mr-2 h-4 w-4" />Add Student
@@ -465,10 +483,25 @@ export default function StudentsPage() {
             <Input placeholder="Search name or admission number…" value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} className="pl-9" />
           </div>
           <div className="flex items-center gap-3">
-            <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
-              <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} className="rounded" />
-              Show all statuses
-            </label>
+            <Select value={statusFilter} onValueChange={v => { setStatusFilter(v as 'all' | StudentStatus); setPage(1) }}>
+              <SelectTrigger className="w-[150px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All statuses</SelectItem>
+                {(Object.keys(STATUS_LABEL) as StudentStatus[]).map(s => (
+                  <SelectItem key={s} value={s}>{STATUS_LABEL[s]}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={classFilter} onValueChange={v => { setClassFilter(v); setPage(1) }}>
+              <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All classes</SelectItem>
+                <SelectItem value="unenrolled">Unenrolled</SelectItem>
+                {classesForEnrollment.map(c => (
+                  <SelectItem key={c.id} value={c.id}>{classLabel(c)}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <ViewToggle value={view} onChange={setView} />
           </div>
         </CardContent>
@@ -481,8 +514,8 @@ export default function StudentsPage() {
           ) : filtered.length === 0 ? (
             <EmptyState
               icon={<Users className="h-12 w-12" />}
-              title={search ? 'No students match your search' : 'No students yet'}
-              action={!search && !atStudentCap ? <Button onClick={openNew}><Plus className="mr-2 h-4 w-4" />Add Student</Button> : undefined}
+              title={search || statusFilter !== 'active' || classFilter !== 'all' ? 'No students match your filters' : 'No students yet'}
+              action={!search && statusFilter === 'active' && classFilter === 'all' && !atStudentCap ? <Button onClick={openNew}><Plus className="mr-2 h-4 w-4" />Add Student</Button> : undefined}
             />
           ) : view === 'grid' ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-4">

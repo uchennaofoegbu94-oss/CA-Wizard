@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Search, Users, UserX, UserCheck, MoreVertical, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react'
+import { Search, Users, UserX, UserCheck, MoreVertical, ChevronLeft, ChevronRight, RefreshCw, ArrowRightLeft, KeyRound } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import { logAudit } from '@/lib/audit'
@@ -25,7 +25,9 @@ const ROLE_LABEL: Record<UserRole, string> = {
   group_admin: 'Group Admin'
 }
 
-type PendingAction = { user: Profile; isActive: boolean } | null
+type UserRow = Profile & { school?: { id: string; name: string } }
+type PendingAction = { user: UserRow; isActive: boolean } | null
+type TransferTarget = { user: UserRow } | null
 
 export default function UsersPage() {
   const { profile: actingProfile } = useAuth()
@@ -34,6 +36,8 @@ export default function UsersPage() {
   const [roleFilter, setRoleFilter] = useState<string>('all')
   const [schoolFilter, setSchoolFilter] = useState<string>('all')
   const [pendingAction, setPendingAction] = useState<PendingAction>(null)
+  const [transferTarget, setTransferTarget] = useState<TransferTarget>(null)
+  const [transferToId, setTransferToId] = useState('')
 
   const { data: schools = [] } = useQuery({
     queryKey: ['all-schools-for-filter'],
@@ -93,6 +97,61 @@ export default function UsersPage() {
       } else {
         toast.success(vars.isActive ? 'User reactivated' : 'User suspended')
       }
+    },
+    onError: (e: Error) => toast.error(e.message)
+  })
+
+  // A public Supabase Auth endpoint — no special DB permission is
+  // needed to call it for any email address (that's how "forgot
+  // password" works everywhere; only the inbox owner can actually use
+  // the link it sends). This just gives super_admin a one-click way to
+  // trigger it on someone's behalf when they've been contacted outside
+  // the app (email, a support ticket) instead of asking that person to
+  // self-serve via /auth/forgot-password themselves.
+  const sendPasswordReset = useMutation({
+    mutationFn: async (user: UserRow) => {
+      const { error } = await supabase.auth.resetPasswordForEmail(user.email, {
+        redirectTo: `${window.location.origin}/auth/reset-password`
+      })
+      if (error) throw error
+      await logAudit({ schoolId: user.school_id, userId: actingProfile?.id ?? null, action: 'UPDATE', entityType: 'password_reset_sent', entityId: user.id })
+    },
+    onSuccess: (_data, user) => toast.success(`Reset link sent to ${user.email}`),
+    onError: (e: Error) => toast.error(e.message)
+  })
+
+  // Only fetched once the transfer dialog is actually open, scoped to
+  // the specific school of the admin being transferred away from —
+  // there's no reason to pull every school's teachers up front.
+  const { data: teachersAtTargetSchool = [] } = useQuery({
+    queryKey: ['active-teachers-for-transfer', transferTarget?.user.school_id],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('profiles').select('*').eq('school_id', transferTarget!.user.school_id!).eq('role', 'teacher').eq('is_active', true).order('first_name')
+      if (error) throw error
+      return data as Profile[]
+    },
+    enabled: !!transferTarget?.user.school_id
+  })
+
+  const transferAdmin = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.rpc('transfer_school_admin', {
+        p_school_id: transferTarget!.user.school_id,
+        p_new_admin_teacher_id: transferToId
+      })
+      if (error) throw error
+    },
+    onSuccess: async () => {
+      const target = teachersAtTargetSchool.find(t => t.id === transferToId)
+      await logAudit({
+        schoolId: transferTarget!.user.school_id, userId: actingProfile?.id ?? null, action: 'PROMOTE', entityType: 'school_admin_transfer',
+        entityId: transferToId, oldValue: { previous_admin: `${transferTarget!.user.first_name} ${transferTarget!.user.last_name}` },
+        newValue: { new_admin: target ? `${target.first_name} ${target.last_name}` : undefined }
+      })
+      qc.invalidateQueries({ queryKey: ['all-platform-users'] })
+      toast.success('Admin role transferred')
+      setTransferTarget(null)
+      setTransferToId('')
     },
     onError: (e: Error) => toast.error(e.message)
   })
@@ -184,6 +243,14 @@ export default function UsersPage() {
                             <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={`More actions for ${u.first_name} ${u.last_name}`}><MoreVertical className="h-4 w-4" /></Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => sendPasswordReset.mutate(u)}>
+                              <KeyRound className="mr-2 h-4 w-4" />Send Password Reset Email
+                            </DropdownMenuItem>
+                            {u.role === 'school_admin' && u.is_active && (
+                              <DropdownMenuItem onClick={() => { setTransferTarget({ user: u }); setTransferToId('') }}>
+                                <ArrowRightLeft className="mr-2 h-4 w-4" />Transfer Admin Role
+                              </DropdownMenuItem>
+                            )}
                             {u.is_active ? (
                               <DropdownMenuItem onClick={() => setPendingAction({ user: u, isActive: false })} className="text-destructive">
                                 <UserX className="mr-2 h-4 w-4" />Suspend
@@ -237,6 +304,32 @@ export default function UsersPage() {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={() => pendingAction && toggleActive.mutate(pendingAction)}>
               Confirm
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!transferTarget} onOpenChange={o => !o && setTransferTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Transfer admin role for {transferTarget?.user.school?.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {transferTarget?.user.first_name} {transferTarget?.user.last_name} will lose admin access immediately (suspended, same as any other suspension). Pick an active teacher at this school to become the new admin.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <Select value={transferToId} onValueChange={setTransferToId}>
+            <SelectTrigger><SelectValue placeholder="Select a teacher" /></SelectTrigger>
+            <SelectContent>
+              {teachersAtTargetSchool.map(t => <SelectItem key={t.id} value={t.id}>{t.first_name} {t.last_name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          {teachersAtTargetSchool.length === 0 && (
+            <p className="text-sm text-muted-foreground">No active teachers at this school to transfer to.</p>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction disabled={!transferToId || transferAdmin.isPending} onClick={() => transferAdmin.mutate()}>
+              Confirm Transfer
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

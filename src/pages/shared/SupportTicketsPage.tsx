@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import {
   Plus, Loader2, LifeBuoy, Search, ArrowLeft, Send, ArrowUpCircle,
-  Clock, School as SchoolIcon
+  Clock, School as SchoolIcon, KeyRound
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
@@ -303,6 +303,32 @@ export default function SupportTicketsPage() {
     onError: (err: Error) => toast.error(err.message)
   })
 
+  // A public Supabase Auth endpoint (see the identical comment on
+  // super-admin UsersPage's own copy of this) — no special DB
+  // permission needed. Gated behind canAct/`acting` for UI consistency
+  // with every other handler-only action on this page, not because
+  // that's the real security boundary (there isn't one to gate here —
+  // only the inbox owner can ever act on the link it sends).
+  const sendPasswordReset = useMutation({
+    mutationFn: async () => {
+      if (!selectedTicket?.submitter?.email) throw new Error('No submitter email on this ticket')
+      const { error } = await supabase.auth.resetPasswordForEmail(selectedTicket.submitter.email, {
+        redirectTo: `${window.location.origin}/auth/reset-password`
+      })
+      if (error) throw error
+    },
+    onSuccess: () => {
+      toast.success(`Reset link sent to ${selectedTicket?.submitter?.email}`)
+      if (selectedTicket) {
+        logAudit({
+          schoolId: selectedTicket.school_id ?? null, userId: profile?.id ?? null, action: 'UPDATE',
+          entityType: 'password_reset_sent', entityId: selectedTicket.submitted_by
+        })
+      }
+    },
+    onError: (err: Error) => toast.error(err.message)
+  })
+
   // ── Handler / escalation logic ───────────────────────────────
   // Mirrors the ticket_handler_update RLS policy exactly — this only
   // controls whether the action buttons render; the database is the
@@ -428,6 +454,19 @@ export default function SupportTicketsPage() {
                   <p className="text-muted-foreground">Category</p>
                   <p className="font-medium">{CATEGORY_LABEL[selectedTicket.category]}</p>
                 </div>
+
+                {acting && selectedTicket.submitter?.email && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => sendPasswordReset.mutate()}
+                    disabled={sendPasswordReset.isPending}
+                  >
+                    {sendPasswordReset.isPending ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <KeyRound className="mr-2 h-3.5 w-3.5" />}
+                    Send Password Reset Email
+                  </Button>
+                )}
 
                 <div className="text-sm space-y-1.5">
                   <p className="text-muted-foreground">Assigned to</p>

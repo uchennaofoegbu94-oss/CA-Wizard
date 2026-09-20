@@ -80,6 +80,26 @@ export interface SchoolSection {
   created_at: string
 }
 
+// A grant of delegated, toggleable admin permissions to a teacher for
+// one specific school_section — see migration 049. Role stays
+// 'teacher'; this is purely additive. One row per (teacher, section)
+// pair, so a teacher can hold different toggles for different sections.
+export interface SectionAdmin {
+  id: string
+  school_id: string
+  section_id: string
+  teacher_id: string
+  can_add_students: boolean
+  can_enroll_students: boolean
+  can_assign_teachers: boolean
+  can_download_documents: boolean
+  granted_by: string | null
+  created_at: string
+  updated_at: string
+  section?: SchoolSection
+  teacher?: Profile
+}
+
 export interface ClassLevel {
   id: string
   school_id: string
@@ -202,6 +222,7 @@ export interface AssessmentCategory {
   field_type: ScoreFieldType
   compute_operation: ScoreComputeOperation | null
   show_on_report_card: boolean
+  show_on_score_entry: boolean
   is_total_field: boolean
   created_at: string
 }
@@ -226,6 +247,7 @@ export interface ScoreFieldValue {
   compute_operation: ScoreComputeOperation | null
   order_index: number
   show_on_report_card: boolean
+  show_on_score_entry: boolean
   is_total_field: boolean
   value: number
   max_value: number

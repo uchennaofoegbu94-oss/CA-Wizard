@@ -69,7 +69,7 @@ export const TranscriptDocument = forwardRef<HTMLDivElement, TranscriptDocumentP
           <div className="grid grid-cols-2 gap-2 text-sm flex-1">
             <p><span className="text-muted-foreground">Name:</span> <strong>{student?.first_name} {student?.last_name}</strong></p>
             <p><span className="text-muted-foreground">Admission No:</span> {student?.admission_number}</p>
-            <p><span className="text-muted-foreground">Overall Average:</span> <strong>{overallAverage}%</strong></p>
+            <p><span className="text-muted-foreground">Overall Average:</span> <strong>{overallAverage}</strong></p>
             <p><span className="text-muted-foreground">Terms Recorded:</span> {snapshotCount}</p>
           </div>
           {studentPhoto ? (
