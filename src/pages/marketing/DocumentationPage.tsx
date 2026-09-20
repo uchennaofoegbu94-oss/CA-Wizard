@@ -88,6 +88,7 @@ const SECTIONS: DocSection[] = [
           <>
             <p><strong>School Admin</strong> has full control over their school — students, teachers, classes, grading, sessions.</p>
             <p><strong>Teacher</strong> access depends on assignment scope: a <em>Subject</em> assignment gives access to just that subject's scores in that class; a <em>Class</em> (Form Teacher) assignment gives access to every subject in that class, plus the full broadsheet with class-wide rankings — subject teachers only ever see their own subject's column.</p>
+            <p><strong>Section Admin</strong> is not a separate role — it's a teacher who has additionally been granted one or more delegated permissions by a School Admin, scoped to a specific School Section (see Delegating to Section Admins under School Admin Guide). A Section Admin keeps their normal teacher dashboard; the delegated capabilities just appear as an extra "Section Admin" area.</p>
           </>
         )
       }
@@ -123,6 +124,31 @@ const SECTIONS: DocSection[] = [
         content: (
           <>
             <p>Define grade boundaries (e.g. A: 70–100) and remarks under Grading. One grading system is marked default and used across report cards and transcripts. Custom, additional grading scales are a Professional-plan feature.</p>
+          </>
+        )
+      },
+      {
+        id: 'section-admins',
+        title: 'Delegating to Section Admins',
+        content: (
+          <>
+            <p>If your school uses <strong>School Sections</strong> (e.g. Basic School, High School — set up under Classes), you can delegate a limited set of admin capabilities to a trusted teacher for one section, without making them a full School Admin. From the <strong>Section Admins</strong> page, pick a teacher and a section, then toggle exactly which of these they can do:</p>
+            <ul className="list-disc pl-5 space-y-1">
+              <li><strong>Add students</strong> — create new student records (school-wide, since a student isn't tied to a section until enrolled)</li>
+              <li><strong>Enroll students</strong> — place a student into a class within their section</li>
+              <li><strong>Assign teachers</strong> — assign a teacher to a class within their section</li>
+              <li><strong>Download documents</strong> — generate bulk report cards and transcripts for a class within their section</li>
+            </ul>
+            <p>A Section Admin can never delete anything, edit a student's existing record, unenroll a student, or touch score entry — those stay School Admin-only. Toggles can be changed or revoked at any time, and a teacher can hold different permissions for different sections at once.</p>
+          </>
+        )
+      },
+      {
+        id: 'admin-transfer',
+        title: 'Transferring the Admin Role',
+        content: (
+          <>
+            <p>If you need to hand off School Admin access to another active teacher — a staff change, for example — go to <strong>Settings → Transfer Admin Role</strong>. Pick the teacher taking over and confirm; you'll be signed out immediately and they'll have full admin access from that point on. This can't be undone by you afterward — only the new admin, or CA-Wizard support, can transfer it again.</p>
           </>
         )
       }
@@ -164,6 +190,34 @@ const SECTIONS: DocSection[] = [
     ]
   },
   {
+    id: 'teacher-guide',
+    label: 'Teacher Guide',
+    icon: ClipboardList,
+    articles: [
+      {
+        id: 'score-entry',
+        title: 'Entering Scores',
+        content: (
+          <>
+            <p>Select a class and subject to bring up the scoring grid. Each score saves automatically a moment after you finish typing — there's no separate save button, and a small indicator on each cell confirms once it's saved.</p>
+            <p>Score entry works fully offline: entries are queued on your device and sync automatically the next time you're online, so a patchy connection during a busy period won't cost you anything you've entered.</p>
+            <p>Use <strong>Download Pre-CA</strong> at any time to get a PDF snapshot of the grid exactly as it currently stands — useful for a working printout before a term closes. It's clearly marked as a working sheet, not an official result, so it's available even for a locked term or before every score is in.</p>
+          </>
+        )
+      },
+      {
+        id: 'section-admin-capabilities',
+        title: 'If You\u2019re a Section Admin',
+        content: (
+          <>
+            <p>If your School Admin has granted you Section Admin permissions, a <strong>Section Admin</strong> area appears in your dashboard alongside your normal teacher pages. What you see there depends on exactly which permissions were granted — one or more of adding students, enrolling students into a class, assigning teachers to a class, and downloading bulk report cards/transcripts, all limited to the section(s) you've been given access to.</p>
+            <p>This access is purely additive — you keep every part of your regular teacher account exactly as it was, and there's nothing here that can delete a record, edit an existing student, or touch score entry.</p>
+          </>
+        )
+      }
+    ]
+  },
+  {
     id: 'faq',
     label: 'FAQ',
     icon: HelpCircle,
@@ -184,6 +238,10 @@ const SECTIONS: DocSection[] = [
             <div>
               <p className="font-semibold">Can I delete a session or term?</p>
               <p className="text-muted-foreground">Yes, but only if it has no real activity recorded under it — this protects historical academic records from accidental loss.</p>
+            </div>
+            <div>
+              <p className="font-semibold">I forgot my password — how do I reset it?</p>
+              <p className="text-muted-foreground">Click "Forgot password?" on the sign-in page and enter your email — you'll get a reset link if an account exists for that address. If you can't get to your email, reach out to your School Admin or CA-Wizard support, who can send the reset link on your behalf.</p>
             </div>
           </div>
         )
