@@ -1,5 +1,6 @@
 import { forwardRef } from 'react'
 import { formatDateTime } from '@/lib/utils'
+import { DocumentHeader, DocumentFooter, documentCellBorderColor } from './DocumentChrome'
 import type { School, Class, Subject, Term } from '@/types'
 
 // Pure presentational, no data-fetching of its own — same convention as
@@ -52,61 +53,56 @@ export const PreCaDocument = forwardRef<HTMLDivElement, PreCaDocumentProps>(func
   return (
     <div
       ref={ref}
-      className="bg-white force-light-surface px-8 py-6"
-      style={{ borderTop: `5px solid ${primaryColor}`, fontSize: '11px', width: '1100px' }}
+      className="bg-white force-light-surface"
+      style={{ fontSize: '11px', width: '1100px' }}
     >
-      {/* Letterhead — same convention as ReportCardDocument, so a
-          Pre-CA sheet is instantly recognizable as belonging to the
-          same school/branding as every other generated document. */}
-      <div className="flex items-center gap-3 border-b-2 pb-3 mb-4" style={{ borderColor: secondaryColor }}>
-        {school?.logo_url && <img src={school.logo_url} alt="" className="h-12 w-12 object-contain shrink-0" />}
-        <div className="flex-1 text-center">
-          <h1 className="font-bold leading-tight" style={{ color: primaryColor, fontSize: '20px' }}>{school?.name}</h1>
-          {school?.motto && <p className="italic text-muted-foreground" style={{ fontSize: '10px' }}>"{school.motto}"</p>}
+      <DocumentHeader school={school} documentType="PRE-CA" primaryColor={primaryColor} secondaryColor={secondaryColor} />
+
+      <div className="px-8 py-6">
+        <p className="text-center text-muted-foreground mb-4" style={{ fontSize: '10px' }}>
+          Not an official result — a snapshot of scores exactly as entered at generation time. Generated {formatDateTime(generatedAt)}
+        </p>
+
+        <div className="grid grid-cols-2 gap-x-6 gap-y-1 mb-4" style={{ fontSize: '11px' }}>
+          <p><span className="text-muted-foreground">Class:</span> <strong>{classLabel}</strong></p>
+          <p><span className="text-muted-foreground">Subject:</span> <strong>{subject?.name}</strong></p>
+          <p><span className="text-muted-foreground">Term:</span> {term?.name}{cls?.session?.name ? ` — ${cls.session.name}` : ''}</p>
+          <p><span className="text-muted-foreground">Teacher:</span> {teacherName}</p>
         </div>
-        {school?.logo_url && <div className="h-12 w-12 shrink-0" />}
-      </div>
 
-      <p className="text-center font-semibold mb-1" style={{ fontSize: '15px', color: primaryColor }}>Pre-CA</p>
-      <p className="text-center text-muted-foreground mb-4" style={{ fontSize: '10px' }}>
-        Working score sheet — not an official result. Generated {formatDateTime(generatedAt)}
-      </p>
-
-      <div className="grid grid-cols-2 gap-x-6 gap-y-1 mb-4" style={{ fontSize: '11px' }}>
-        <p><span className="text-muted-foreground">Class:</span> <strong>{classLabel}</strong></p>
-        <p><span className="text-muted-foreground">Subject:</span> <strong>{subject?.name}</strong></p>
-        <p><span className="text-muted-foreground">Term:</span> {term?.name}{cls?.session?.name ? ` — ${cls.session.name}` : ''}</p>
-        <p><span className="text-muted-foreground">Teacher:</span> {teacherName}</p>
-      </div>
-
-      <table className="w-full border-collapse" style={{ fontSize: '10.5px' }}>
-        <thead>
-          <tr style={{ backgroundColor: primaryColor }}>
-            <th className="text-white text-left p-2 border" style={{ borderColor: secondaryColor }}>#</th>
-            <th className="text-white text-left p-2 border" style={{ borderColor: secondaryColor }}>Student</th>
-            <th className="text-white text-left p-2 border" style={{ borderColor: secondaryColor }}>Adm. No.</th>
-            {columns.map(col => (
-              <th key={col.key} className="text-white text-center p-2 border" style={{ borderColor: secondaryColor }}>
-                {col.label}{col.isComputed ? ' (Σ)' : ''}<br /><span style={{ fontWeight: 400, fontSize: '9px' }}>/{col.maxValue}</span>
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, i) => (
-            <tr key={row.studentId} style={{ backgroundColor: i % 2 === 0 ? '#ffffff' : '#f8fafc' }}>
-              <td className="p-2 border" style={{ borderColor: '#e2e8f0' }}>{i + 1}</td>
-              <td className="p-2 border font-medium" style={{ borderColor: '#e2e8f0' }}>{row.name}</td>
-              <td className="p-2 border" style={{ borderColor: '#e2e8f0' }}>{row.admissionNumber}</td>
+        <table className="w-full border-collapse" style={{ fontSize: '10.5px' }}>
+          <thead>
+            <tr style={{ backgroundColor: primaryColor }}>
+              <th className="text-white text-left p-2 border" style={{ borderColor: secondaryColor }}>#</th>
+              <th className="text-white text-left p-2 border" style={{ borderColor: secondaryColor }}>Student</th>
+              <th className="text-white text-left p-2 border" style={{ borderColor: secondaryColor }}>Adm. No.</th>
               {columns.map(col => (
-                <td key={col.key} className="p-2 border text-center" style={{ borderColor: '#e2e8f0' }}>
-                  {row.values[col.key] ?? '—'}
-                </td>
+                <th key={col.key} className="text-white text-center p-2 border" style={{ borderColor: secondaryColor }}>
+                  {col.label}{col.isComputed ? ' (Σ)' : ''}<br /><span style={{ fontWeight: 400, fontSize: '9px' }}>/{col.maxValue}</span>
+                </th>
               ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {rows.map((row, i) => (
+              <tr key={row.studentId} style={{ backgroundColor: i % 2 === 0 ? '#ffffff' : '#f8fafc' }}>
+                <td className="p-2 border" style={{ borderColor: documentCellBorderColor }}>{i + 1}</td>
+                <td className="p-2 border font-medium" style={{ borderColor: documentCellBorderColor }}>{row.name}</td>
+                <td className="p-2 border" style={{ borderColor: documentCellBorderColor }}>{row.admissionNumber}</td>
+                {columns.map(col => (
+                  <td key={col.key} className="p-2 border text-center" style={{ borderColor: documentCellBorderColor }}>
+                    {row.values[col.key] ?? '—'}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        <div className="mt-4">
+          <DocumentFooter school={school} secondaryColor={secondaryColor} />
+        </div>
+      </div>
     </div>
   )
 })

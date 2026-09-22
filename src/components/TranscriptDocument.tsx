@@ -1,4 +1,5 @@
 import { forwardRef } from 'react'
+import { DocumentHeader, DocumentFooter } from './DocumentChrome'
 import type { Student, School } from '@/types'
 
 // Mirrors ReportCardDocument's reasoning exactly: pure presentational,
@@ -52,20 +53,20 @@ export const TranscriptDocument = forwardRef<HTMLDivElement, TranscriptDocumentP
   const secondaryColor = school?.secondary_color ?? '#3b82f6'
 
   return (
-    <div ref={ref} className="relative bg-white force-light-surface p-8" style={{ borderTop: `6px solid ${primaryColor}` }}>
+    <div ref={ref} className="relative bg-white force-light-surface">
       {school?.watermark_url && (
         <img src={school.watermark_url} alt="" className="absolute inset-0 m-auto max-h-96 max-w-96 opacity-[0.06] pointer-events-none select-none" />
       )}
 
-      <div className="relative">
-        <div className="text-center border-b-2 pb-4 mb-6" style={{ borderColor: secondaryColor }}>
-          {school?.logo_url && <img src={school.logo_url} alt="" className="h-16 mx-auto mb-2 object-contain" />}
-          <h1 className="font-bold" style={{ color: primaryColor, fontSize: '20px' }}>{school?.name}</h1>
-          {school?.motto && <p className="italic text-muted-foreground text-sm">"{school.motto}"</p>}
-          <p className="text-sm font-semibold mt-3">Official Academic Transcript</p>
-        </div>
+      <DocumentHeader school={school} documentType="TRANSCRIPT" primaryColor={primaryColor} secondaryColor={secondaryColor} />
 
-        <div className="flex items-start justify-between gap-4 mb-6">
+      <div className="relative p-8 pt-5">
+        {school?.motto && <p className="italic text-muted-foreground text-sm text-center mb-4">"{school.motto}"</p>}
+
+        <div
+          className="flex items-start justify-between gap-4 mb-6 px-3 py-2.5 rounded"
+          style={{ backgroundColor: `${secondaryColor}12` }}
+        >
           <div className="grid grid-cols-2 gap-2 text-sm flex-1">
             <p><span className="text-muted-foreground">Name:</span> <strong>{student?.first_name} {student?.last_name}</strong></p>
             <p><span className="text-muted-foreground">Admission No:</span> {student?.admission_number}</p>
@@ -96,22 +97,22 @@ export const TranscriptDocument = forwardRef<HTMLDivElement, TranscriptDocumentP
                     )
                   }
                   return (
-                    <div key={termIdx} className="border rounded-md p-2" style={{ borderColor: `${secondaryColor}40` }}>
-                      <p className="text-xs font-semibold mb-1.5 pb-1 border-b" style={{ color: primaryColor, borderColor: secondaryColor }}>
+                    <div key={termIdx} className="border rounded-md overflow-hidden" style={{ borderColor: `${secondaryColor}40` }}>
+                      <p className="text-xs font-semibold px-2 py-1 text-white" style={{ backgroundColor: primaryColor }}>
                         {snap.term_info.name}
                       </p>
                       <table className="w-full text-[10px]">
-                        <tbody>
+                        <tbody className="px-2">
                           {(snap.snapshot_data.subjects ?? []).map((r, i) => (
                             <tr key={i} className="border-b border-dashed">
-                              <td className="py-0.5 pr-1 truncate max-w-[70px]">{r.subject?.name}</td>
+                              <td className="py-0.5 pr-1 pl-2 truncate max-w-[70px]">{r.subject?.name}</td>
                               <td className="py-0.5 text-right font-semibold">{r.total}</td>
-                              <td className="py-0.5 text-right pl-1" style={{ color: primaryColor }}>{r.grade}</td>
+                              <td className="py-0.5 text-right pl-1 pr-2" style={{ color: primaryColor }}>{r.grade}</td>
                             </tr>
                           ))}
                         </tbody>
                       </table>
-                      <div className="flex justify-between mt-1.5 pt-1 border-t text-[10px] font-semibold" style={{ borderColor: secondaryColor }}>
+                      <div className="flex justify-between px-2 py-1 text-[10px] font-semibold" style={{ backgroundColor: `${secondaryColor}12` }}>
                         <span>Total: {snap.snapshot_data.grandTotal}</span>
                         <span>Avg: {snap.snapshot_data.average}</span>
                       </div>
@@ -173,6 +174,10 @@ export const TranscriptDocument = forwardRef<HTMLDivElement, TranscriptDocumentP
             <div className="border-t border-dashed mt-0.5" />
             <p className="text-xs text-muted-foreground mt-1">Principal's Signature &amp; Stamp</p>
           </div>
+        </div>
+
+        <div className="mt-6">
+          <DocumentFooter school={school} secondaryColor={secondaryColor} />
         </div>
       </div>
     </div>

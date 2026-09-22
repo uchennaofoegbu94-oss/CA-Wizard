@@ -5,6 +5,7 @@ import { ClipboardList, Trophy, FileText, FileArchive, Download, Loader2 } from 
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import { exportNodeToPdf } from '@/lib/pdfExport'
+import { DocumentHeader, DocumentFooter } from '@/components/DocumentChrome'
 import { PageHeader, EmptyState, Spinner } from '@/components/ui/table'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Card, CardContent } from '@/components/ui/card'
@@ -287,34 +288,32 @@ export default function ReportsPage() {
       ) : (
         <Card>
           <CardContent className="p-0" ref={broadsheetRef}>
-            <div className="bg-white force-light-surface p-6" style={{ borderTop: `4px solid ${school?.primary_color ?? '#1e3a8a'}` }}>
-              {/* Header: school branding + which class/term/session this is —
-                  previously the exported PDF was just the bare table with no
-                  indication of any of this at all. */}
-              <div className="flex items-center gap-3 border-b-2 pb-3 mb-3" style={{ borderColor: school?.secondary_color ?? '#3b82f6' }}>
-                {school?.logo_url && <img src={school.logo_url} alt="" className="h-12 w-12 object-contain shrink-0" />}
-                <div className="flex-1 text-center">
-                  <h1 className="font-bold leading-tight text-lg" style={{ color: school?.primary_color ?? '#1e3a8a' }}>{school?.name}</h1>
-                  {school?.address && <p className="text-muted-foreground text-xs">{school.address}</p>}
+            <div className="bg-white force-light-surface">
+              <DocumentHeader school={school} documentType="BROADSHEET" primaryColor={school?.primary_color ?? '#1e3a8a'} secondaryColor={school?.secondary_color ?? '#3b82f6'} />
+
+              <div className="p-6">
+                {/* Term/class/session label bar — same convention as the
+                    other generated documents, replacing what used to be
+                    a bare centered line of text */}
+                <div
+                  className="text-center font-semibold text-sm mb-4 px-3 py-1.5 rounded text-white"
+                  style={{ backgroundColor: school?.primary_color ?? '#1e3a8a' }}
+                >
+                  {classLabel(selectedClass)} — {selectedTerm?.name} — {sessions.find(s => s.id === effectiveSessionId)?.name}
                 </div>
-                {school?.logo_url && <div className="h-12 w-12 shrink-0" />}
-              </div>
-              <p className="text-center font-semibold text-sm mb-4">
-                Broadsheet — {classLabel(selectedClass)} — {selectedTerm?.name} — {sessions.find(s => s.id === effectiveSessionId)?.name}
-              </p>
 
               <div className="overflow-x-auto">
                 <Table containerClassName="max-h-[70vh]">
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="sticky left-0 top-0 z-30 bg-background w-8 px-2 py-2 text-xs">Pos</TableHead>
-                      <TableHead className="sticky left-8 top-0 z-30 bg-background px-2 py-2 text-xs">Student</TableHead>
+                      <TableHead className="sticky left-0 top-0 z-30 w-8 px-2 py-2 text-xs text-white" style={{ backgroundColor: school?.primary_color ?? '#1e3a8a' }}>Pos</TableHead>
+                      <TableHead className="sticky left-8 top-0 z-30 px-2 py-2 text-xs text-white" style={{ backgroundColor: school?.primary_color ?? '#1e3a8a' }}>Student</TableHead>
                       {subjects.map(s => (
-                        <TableHead key={s.id} className="sticky top-0 z-20 bg-background text-center whitespace-nowrap px-1.5 py-2 text-xs w-14">{s.code ?? s.name.slice(0, 3).toUpperCase()}</TableHead>
+                        <TableHead key={s.id} className="sticky top-0 z-20 text-center whitespace-nowrap px-1.5 py-2 text-xs w-14 text-white" style={{ backgroundColor: school?.primary_color ?? '#1e3a8a' }}>{s.code ?? s.name.slice(0, 3).toUpperCase()}</TableHead>
                       ))}
-                      <TableHead className="sticky top-0 z-20 bg-background text-center font-semibold px-2 py-2 text-xs w-14">Total</TableHead>
-                      <TableHead className="sticky top-0 z-20 bg-background text-center font-semibold px-2 py-2 text-xs w-16">Avg</TableHead>
-                      <TableHead className="sticky top-0 z-20 bg-background w-8 px-1 no-print" />
+                      <TableHead className="sticky top-0 z-20 text-center font-semibold px-2 py-2 text-xs w-14 text-white" style={{ backgroundColor: school?.primary_color ?? '#1e3a8a' }}>Total</TableHead>
+                      <TableHead className="sticky top-0 z-20 text-center font-semibold px-2 py-2 text-xs w-16 text-white" style={{ backgroundColor: school?.primary_color ?? '#1e3a8a' }}>Avg</TableHead>
+                      <TableHead className="sticky top-0 z-20 w-8 px-1 no-print" style={{ backgroundColor: school?.primary_color ?? '#1e3a8a' }} />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -349,10 +348,9 @@ export default function ReportsPage() {
                 </Table>
               </div>
 
-              {/* Footer: generation date + signature line, same treatment as
-                  report cards/transcripts */}
-              <div className="flex items-center justify-between mt-6 pt-3 border-t text-xs text-muted-foreground" style={{ borderColor: school?.secondary_color ?? '#3b82f6' }}>
-                <span>Generated {new Date().toLocaleDateString('en-NG', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+              {/* Footer: signature line, then the shared document-family
+                  credit footer below it */}
+              <div className="flex items-center justify-end mt-6 pt-3 border-t text-xs text-muted-foreground" style={{ borderColor: school?.secondary_color ?? '#3b82f6' }}>
                 <div className="text-center">
                   <div className="h-8 flex items-end justify-center">
                     {school?.principal_signature_url && <img src={school.principal_signature_url} alt="" className="max-h-8 object-contain" />}
@@ -360,6 +358,11 @@ export default function ReportsPage() {
                   <div className="border-t border-dashed mt-0.5 w-32" />
                   <p className="mt-0.5">Principal's Signature</p>
                 </div>
+              </div>
+
+              <div className="mt-3">
+                <DocumentFooter school={school} secondaryColor={school?.secondary_color ?? '#3b82f6'} />
+              </div>
               </div>
             </div>
           </CardContent>

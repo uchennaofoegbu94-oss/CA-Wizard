@@ -1,5 +1,6 @@
 import { forwardRef } from 'react'
 import { formatDate, initials, ordinalSuffix } from '@/lib/utils'
+import { DocumentHeader, DocumentFooter, documentTableHeaderStyle, documentCellBorderColor } from './DocumentChrome'
 import type {
   Student, Class, Term, School, GradeRange, Attendance, Comment,
   AffectiveMetric, AffectiveScore, PsychomotorMetric, PsychomotorScore
@@ -31,7 +32,11 @@ const PAGE_HEIGHT_PX = Math.round(PAGE_WIDTH_PX * (297 / 210)) // 1103
 // still varied card to card. Padding to a constant row count fixes
 // both — content always starts right under the photo, and the table
 // itself is always the same height.
-const SUBJECT_ROW_SLOTS = 20
+// Trimmed from 20 to 17 to make room for the new branded header band
+// + footer credit line below (see DocumentChrome) within the same
+// fixed one-page budget — a school with more than 17 subjects still
+// never gets truncated, just a taller table, exactly as before.
+const SUBJECT_ROW_SLOTS = 17
 
 // A school-configurable field's value for one subject row. Only fields
 // with show_on_report_card=true are ever passed in here — the caller
@@ -110,33 +115,36 @@ export const ReportCardDocument = forwardRef<HTMLDivElement, ReportCardDocumentP
   return (
     <div
       ref={ref}
-      className="relative bg-white force-light-surface px-7 py-6 flex flex-col"
-      style={{ borderTop: `5px solid ${primaryColor}`, fontSize: '10.5px', width: PAGE_WIDTH_PX, height: PAGE_HEIGHT_PX }}
+      className="relative bg-white force-light-surface flex flex-col overflow-hidden"
+      style={{ fontSize: '10.5px', width: PAGE_WIDTH_PX, height: PAGE_HEIGHT_PX }}
     >
       {school?.watermark_url && (
         <img src={school.watermark_url} alt="" className="absolute inset-0 m-auto max-h-56 max-w-56 opacity-[0.06] pointer-events-none select-none" />
       )}
 
-      <div className="relative flex flex-col flex-1 min-h-0">
+      {/* Full-bleed branded band, edge to edge — everything else below stays inset */}
+      <DocumentHeader school={school} documentType="REPORT CARD" primaryColor={primaryColor} secondaryColor={secondaryColor} compact />
+
+      <div className="relative flex flex-col flex-1 min-h-0 px-7 pb-6">
         {/* ── Header: always pinned to the top of the page ── */}
         <div className="shrink-0">
-          <div className="flex items-center gap-3 border-b-2 pb-3 mb-3" style={{ borderColor: secondaryColor }}>
-            {school?.logo_url && <img src={school.logo_url} alt="" className="h-12 w-12 object-contain shrink-0" />}
-            <div className="flex-1 text-center">
-              <h1 className="font-bold leading-tight" style={{ color: primaryColor, fontSize: '20px' }}>{school?.name}</h1>
-              {school?.motto && <p className="italic text-muted-foreground" style={{ fontSize: '9.5px' }}>"{school.motto}"</p>}
-              {school?.address && <p className="text-muted-foreground" style={{ fontSize: '9px' }}>{school.address}</p>}
-            </div>
-            {school?.logo_url && <div className="h-12 w-12 shrink-0" />}
+          {/* Term/session label bar — echoes the reference PDF's dark
+              term bar, sized to stay within this page's tight budget */}
+          <div
+            className="flex items-center justify-between px-2.5 py-1 mt-3 mb-2 rounded"
+            style={{ backgroundColor: primaryColor, fontSize: '9.5px' }}
+          >
+            <span className="text-white font-semibold">{term?.name} — {cls?.session?.name}</span>
+            {position && <span className="text-white" style={{ opacity: 0.85 }}>Avg: {average}%  •  Position: {ordinalSuffix(position.rank)}/{position.outOf}</span>}
           </div>
 
-          <p className="text-center font-semibold mb-3" style={{ fontSize: '12px' }}>
-            {term?.name} Report Card — {cls?.session?.name}
-          </p>
-
-          {/* Bio block: student details on the left, photo on the right —
-              this is the original/intended arrangement */}
-          <div className="flex items-start gap-3 mb-3">
+          {/* Student info bar — light tint instead of the reference's
+              gray-blue, using the school's own secondary colour so it
+              stays on-brand per school rather than a fixed gray */}
+          <div
+            className="flex items-start gap-3 mb-2 px-2.5 py-2 rounded"
+            style={{ backgroundColor: `${secondaryColor}12` }}
+          >
             <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 flex-1" style={{ fontSize: '10px' }}>
               <p><span className="text-muted-foreground">Name:</span> <strong style={{ fontSize: '11.5px' }}>{student?.first_name} {student?.last_name}</strong></p>
               <p><span className="text-muted-foreground">Adm. No:</span> {student?.admission_number}</p>
@@ -161,29 +169,29 @@ export const ReportCardDocument = forwardRef<HTMLDivElement, ReportCardDocumentP
         <div className="flex-1 min-h-0 overflow-hidden">
           <table className="w-full border-collapse mb-2" style={{ fontSize: '10px' }}>
             <thead>
-              <tr style={{ backgroundColor: `${secondaryColor}18` }}>
-                <th className="text-left py-1 px-1.5 font-semibold">Subject</th>
+              <tr style={documentTableHeaderStyle(primaryColor)}>
+                <th className="text-left py-1.5 px-1.5 font-semibold">Subject</th>
                 {fieldColumns.map(col => (
-                  <th key={col.id} className="text-center py-1 px-1 font-semibold w-10">{col.name}</th>
+                  <th key={col.id} className="text-center py-1.5 px-1 font-semibold w-10">{col.name}</th>
                 ))}
-                <th className="text-center py-1 px-1 font-semibold w-10">Total</th>
-                <th className="text-center py-1 px-1 font-semibold w-8">Grd</th>
-                <th className="text-left py-1 px-1.5 font-semibold">Remark</th>
+                <th className="text-center py-1.5 px-1 font-semibold w-10">Total</th>
+                <th className="text-center py-1.5 px-1 font-semibold w-8">Grd</th>
+                <th className="text-left py-1.5 px-1.5 font-semibold">Remark</th>
               </tr>
             </thead>
             <tbody>
               {rowSlots.map((r, i) => (
-                <tr key={r?.subject.id ?? `empty-${i}`} className="border-b" style={{ borderColor: '#eee', height: '19px' }}>
-                  <td className="py-1 px-1.5">{r?.subject.name ?? '\u00A0'}</td>
+                <tr key={r?.subject.id ?? `empty-${i}`} style={{ border: `1px solid ${documentCellBorderColor}`, backgroundColor: i % 2 ? '#f8fafc' : '#ffffff', height: '19px' }}>
+                  <td className="py-1 px-1.5" style={{ border: `1px solid ${documentCellBorderColor}` }}>{r?.subject.name ?? '\u00A0'}</td>
                   {fieldColumns.map(col => {
                     const fv = r?.fields.find(f => f.field_id === col.id)
                     return (
-                      <td key={col.id} className="text-center py-1 px-1">{fv?.value ?? ''}</td>
+                      <td key={col.id} className="text-center py-1 px-1" style={{ border: `1px solid ${documentCellBorderColor}` }}>{fv?.value ?? ''}</td>
                     )
                   })}
-                  <td className="text-center py-1 px-1 font-semibold">{r?.total ?? ''}</td>
-                  <td className="text-center py-1 px-1 font-semibold" style={{ color: primaryColor }}>{r?.grade ?? ''}</td>
-                  <td className="py-1 px-1.5 text-muted-foreground">{r?.remark ?? ''}</td>
+                  <td className="text-center py-1 px-1 font-semibold" style={{ border: `1px solid ${documentCellBorderColor}` }}>{r?.total ?? ''}</td>
+                  <td className="text-center py-1 px-1 font-semibold" style={{ border: `1px solid ${documentCellBorderColor}`, color: primaryColor }}>{r?.grade ?? ''}</td>
+                  <td className="py-1 px-1.5 text-muted-foreground" style={{ border: `1px solid ${documentCellBorderColor}` }}>{r?.remark ?? ''}</td>
                 </tr>
               ))}
             </tbody>
@@ -271,6 +279,10 @@ export const ReportCardDocument = forwardRef<HTMLDivElement, ReportCardDocumentP
               <div className="border-t border-dashed mt-0.5" />
               <p className="text-muted-foreground mt-0.5">Principal's Signature &amp; Stamp</p>
             </div>
+          </div>
+
+          <div className="mt-2">
+            <DocumentFooter school={school} secondaryColor={secondaryColor} />
           </div>
         </div>
       </div>
