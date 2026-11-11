@@ -70,9 +70,35 @@ export function clampScore(score: number, max: number): number {
   return Math.max(0, Math.min(score, max))
 }
 
+// ── The 2-decimal rule ──────────────────────────────────────────────
+// Every calculated score shown anywhere in the app (totals, averages,
+// percentages, ranking figures) is at most 2 decimal places. JavaScript's
+// floating-point sums leak noise like 120.52000000000001 or
+// 99.94999999999999 when values are added up client-side, so anything
+// that is summed/averaged in the browser MUST go through round2() before
+// it is displayed, ranked on, or saved into a snapshot.
+// Number.EPSILON nudges exact halves (1.005) the way people expect.
+// Returns a number, so trailing zeros drop naturally (68.3, not 68.30);
+// use fmt2() when a fixed-width string is wanted.
+export function round2(n: number | null | undefined): number {
+  if (n === null || n === undefined || !Number.isFinite(n)) return 0
+  return Math.round((n + Number.EPSILON) * 100) / 100
+}
+
+// Display form: at most 2dp, no trailing zeros, safe for null/undefined/NaN
+export function fmt2(n: number | null | undefined): string {
+  if (n === null || n === undefined || !Number.isFinite(n)) return '—'
+  return String(round2(n))
+}
+
+// Sum with the 2dp rule applied to the result (avoids float noise)
+export function sum2(values: Array<number | null | undefined>): number {
+  return round2(values.reduce<number>((acc, v) => acc + (Number.isFinite(v as number) ? (v as number) : 0), 0))
+}
+
 export function percentage(value: number, total: number): number {
   if (total === 0) return 0
-  return Math.round((value / total) * 100 * 100) / 100
+  return round2((value / total) * 100)
 }
 
 export function gradeFromScore(

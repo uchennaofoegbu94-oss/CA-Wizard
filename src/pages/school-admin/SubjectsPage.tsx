@@ -24,6 +24,8 @@ import {
 } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/select'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { SubjectAudienceControl } from '@/components/SubjectAudienceControl'
+import { useGroupTypes, audienceMode } from '@/lib/studentGroups'
 import toast from 'react-hot-toast'
 import type { Subject, ClassLevel, SubjectOffering } from '@/types'
 import { ViewToggle, type ViewMode } from '@/components/ui/view-toggle'
@@ -71,7 +73,7 @@ export default function SubjectsPage() {
   const { data: offerings = [] } = useQuery({
     queryKey: ['subject-offerings', schoolId],
     queryFn: async () => {
-      const { data, error } = await supabase.from('subject_offerings').select('*').eq('school_id', schoolId!)
+      const { data, error } = await supabase.from('subject_offerings').select('*, groups:subject_offering_groups(group_id)').eq('school_id', schoolId!)
       if (error) throw error
       return data as SubjectOffering[]
     },
@@ -82,9 +84,16 @@ export default function SubjectsPage() {
   const isOffered = (subjectId: string, levelId: string) =>
     offerings.some(o => o.subject_id === subjectId && o.class_level_id === levelId)
 
+  const { data: groupTypes = [] } = useGroupTypes(schoolId)
+  const offeringFor = (subjectId: string, levelId: string) =>
+    offerings.find(o => o.subject_id === subjectId && o.class_level_id === levelId)
+
   const invalidateAll = () => {
     qc.invalidateQueries({ queryKey: ['subject-catalog', schoolId] })
     qc.invalidateQueries({ queryKey: ['subject-offerings', schoolId] })
+    // Which students take which subject changes with this — every roster-driven screen must refetch
+    qc.invalidateQueries({ queryKey: ['class-subject-roster'] })
+    qc.invalidateQueries({ queryKey: ['student-optional-subjects'] })
   }
 
   // ══════════════════════════════════════════════════════════
@@ -302,11 +311,13 @@ export default function SubjectsPage() {
             <div className="divide-y">
               {levels.map(level => {
                 const count = offeringsForLevel(level.id).length
+                const restrictedCount = offeringsForLevel(level.id).filter(o => audienceMode(o) !== 'everyone').length
                 return (
                   <div key={level.id} className="flex items-center justify-between p-4">
                     <div className="flex items-center gap-3">
                       <p className="font-medium text-sm">{level.name}</p>
                       <Badge variant="secondary">{count} subject{count !== 1 ? 's' : ''}</Badge>
+                      {restrictedCount > 0 && <Badge variant="info">{restrictedCount} not for everyone</Badge>}
                     </div>
                     <Button variant="outline" size="sm" onClick={() => setOfferingsLevel(level)}>
                       Manage Offerings
@@ -346,10 +357,14 @@ export default function SubjectsPage() {
 
       {/* Manage Offerings Dialog */}
       <Dialog open={!!offeringsLevel} onOpenChange={o => !o && setOfferingsLevel(null)}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>{offeringsLevel?.name} — Offerings</DialogTitle>
-            <DialogDescription>Toggle which catalog subjects this level offers.</DialogDescription>
+            <DialogDescription>
+              Tick the subjects this level offers, then choose who takes each one: <strong>Everyone</strong>, <strong>Only certain groups</strong> (e.g. Technical Drawing → Science,
+              Foods &amp; Nutrition → Arts, Islamic Studies → Muslim) or <strong>Students choose individually</strong>. A student only has the subjects they take on their
+              score sheets, report card, broadsheet and average.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-1 max-h-80 overflow-y-auto">
             {subjects.length === 0 ? (
@@ -358,19 +373,35 @@ export default function SubjectsPage() {
               subjects.map(subject => {
                 const offered = offeringsLevel ? isOffered(subject.id, offeringsLevel.id) : false
                 return (
-                  <label key={subject.id} className="flex items-center gap-3 p-2 rounded hover:bg-muted cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={offered}
-                      disabled={toggleOffering.isPending}
-                      onChange={() => offeringsLevel && toggleOffering.mutate({
-                        subjectId: subject.id, levelId: offeringsLevel.id, currentlyOffered: offered
-                      })}
-                      className="rounded"
-                    />
-                    <span className="text-sm">{subject.name}</span>
-                    {subject.code && <span className="text-xs text-muted-foreground font-mono">({subject.code})</span>}
-                  </label>
+                  <div key={subject.id} className="rounded hover:bg-muted/50 p-2">
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={offered}
+                        disabled={toggleOffering.isPending}
+                        onChange={() => offeringsLevel && toggleOffering.mutate({
+                          subjectId: subject.id, levelId: offeringsLevel.id, currentlyOffered: offered
+                        })}
+                        className="rounded"
+                      />
+                      <span className="text-sm">{subject.name}</span>
+                      {subject.code && <span className="text-xs text-muted-foreground font-mono">({subject.code})</span>}
+                    </label>
+                    {/* Outside the label on purpose: clicking here must never toggle "offered" */}
+                    {offered && offeringsLevel && offeringFor(subject.id, offeringsLevel.id) && (
+                      <div className="pl-7 pt-1.5">
+                        <SubjectAudienceControl
+                          subjectId={subject.id}
+                          subjectName={subject.name}
+                          levelId={offeringsLevel.id}
+                          levelName={offeringsLevel.name}
+                          offering={offeringFor(subject.id, offeringsLevel.id)!}
+                          types={groupTypes}
+                          onApplied={invalidateAll}
+                        />
+                      </div>
+                    )}
+                  </div>
                 )
               })
             )}

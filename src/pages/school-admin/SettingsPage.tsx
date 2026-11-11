@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button'
 import { Input, Textarea } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { ColorField } from '@/components/ui/color-field'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -230,15 +231,9 @@ export default function SettingsPage() {
 
             <div>
               <p className="text-sm font-medium mb-2">Brand Colors</p>
-              <div className="flex items-center gap-6">
-                <label className="flex items-center gap-2 text-sm">
-                  <input type="color" value={primaryColor} onChange={e => setPrimaryColor(e.target.value)} className="h-9 w-9 rounded cursor-pointer border" />
-                  Primary
-                </label>
-                <label className="flex items-center gap-2 text-sm">
-                  <input type="color" value={secondaryColor} onChange={e => setSecondaryColor(e.target.value)} className="h-9 w-9 rounded cursor-pointer border" />
-                  Secondary
-                </label>
+              <div className="flex flex-wrap items-start gap-6">
+                <ColorField label="Primary" value={primaryColor} onChange={setPrimaryColor} />
+                <ColorField label="Secondary" value={secondaryColor} onChange={setSecondaryColor} />
                 <Button size="sm" onClick={() => saveColors.mutate()} disabled={saveColors.isPending}>
                   {saveColors.isPending && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
                   Save Colors

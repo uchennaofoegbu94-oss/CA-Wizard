@@ -7,6 +7,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { PageHeader, EmptyState, Spinner } from '@/components/ui/table'
 import { initials } from '@/lib/utils'
+import { SubjectChoicesPanel } from '@/components/SubjectChoicesPanel'
+import { StudentGroupsPanel } from '@/components/StudentGroupsPanel'
+import { SubjectLoadCheck } from '@/components/SubjectLoadCheck'
+import { useAuth } from '@/contexts/AuthContext'
+import { useGroupTypes } from '@/lib/studentGroups'
+import { useClassSubjectRoster, indexRoster } from '@/lib/subjectRoster'
 import type { Class, StudentEnrollment, Subject, TeacherAssignment } from '@/types'
 
 export default function ClassDetailPage() {
@@ -46,10 +52,13 @@ export default function ClassDetailPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('subject_offerings')
-        .select('subject:subjects(*)')
+        .select('is_optional, groups:subject_offering_groups(group:student_groups(name)), subject:subjects(*)')
         .eq('class_level_id', cls!.class_level_id)
       if (error) throw error
-      return (data as unknown as { subject: Subject }[]).map(o => o.subject).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name))
+      return (data as unknown as { is_optional: boolean; groups: { group: { name: string } | null }[]; subject: Subject }[])
+        .filter(o => o.subject)
+        .map(o => ({ ...o.subject, is_optional: o.is_optional, groupNames: (o.groups ?? []).map(g => g.group?.name).filter(Boolean) as string[] }))
+        .sort((a, b) => a.name.localeCompare(b.name))
     },
     enabled: !!cls?.class_level_id
   })
@@ -66,6 +75,15 @@ export default function ClassDetailPage() {
     },
     enabled: !!id
   })
+
+  // Who takes each subject (optional subjects only include students who opted in)
+  const { data: rosterRows } = useClassSubjectRoster(id)
+  const roster = indexRoster(rosterRows)
+  const { schoolId } = useAuth()
+  const { data: groupTypes = [] } = useGroupTypes(schoolId)
+  const hasOptional = subjects.some(s => s.is_optional)
+  const hasGroupSubjects = subjects.some(s => s.groupNames.length > 0)
+  const showGroups = hasGroupSubjects || groupTypes.length > 0
 
   const subjectTeacher = (subjectId: string) =>
     assignments.find(a => a.subject_id === subjectId)?.teacher
@@ -185,7 +203,19 @@ export default function ClassDetailPage() {
                   const teacher = subjectTeacher(subj.id)
                   return (
                     <div key={subj.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
-                      <p className="text-sm font-medium">{subj.name}</p>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <p className="text-sm font-medium">{subj.name}</p>
+                        {subj.is_optional && (
+                          <Badge variant="info" className="text-[10px]">
+                            Optional · {roster.studentsBySubject.get(subj.id)?.size ?? 0} of {students.length}
+                          </Badge>
+                        )}
+                        {subj.groupNames.length > 0 && (
+                          <Badge variant="info" className="text-[10px]">
+                            {subj.groupNames.join(' / ')} only · {roster.studentsBySubject.get(subj.id)?.size ?? 0} of {students.length}
+                          </Badge>
+                        )}
+                      </div>
                       {teacher ? (
                         <span className="text-xs text-muted-foreground flex items-center gap-1">
                           <Mail className="h-3 w-3" />{teacher.first_name} {teacher.last_name}
@@ -201,6 +231,34 @@ export default function ClassDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      {(hasOptional || hasGroupSubjects) && (
+        <div className="mt-6">
+          <SubjectLoadCheck classId={cls.id} sessionId={cls.session_id} />
+        </div>
+      )}
+
+      {showGroups && (
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle className="text-base">Student Groups</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <StudentGroupsPanel classId={cls.id} classLabel={classLabel} setupHint="Create them under Student Groups in the menu." />
+          </CardContent>
+        </Card>
+      )}
+
+      {hasOptional && (
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle className="text-base">Subject Choices</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <SubjectChoicesPanel classId={cls.id} classLabel={classLabel} offeringsHint="Set electives under Subjects → Class Level Offerings." />
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }

@@ -28,15 +28,16 @@ const grantSchema = z.object({
 })
 type GrantForm = z.infer<typeof grantSchema>
 
-// The 3 toggleable permissions this feature currently supports.
-// Adding a 4th later (schema: migration 049's comment) means adding
+// The toggleable permissions this feature currently supports.
+// Adding another later (schema: migration 049's comment) means adding
 // one more entry here plus a matching column — nothing else about
 // this page's layout needs to change.
-const PERMISSIONS: { key: keyof Pick<SectionAdmin, 'can_add_students' | 'can_enroll_students' | 'can_assign_teachers' | 'can_download_documents'>; label: string; hint: string }[] = [
+const PERMISSIONS: { key: keyof Pick<SectionAdmin, 'can_add_students' | 'can_enroll_students' | 'can_assign_teachers' | 'can_download_documents' | 'can_manage_assessments'>; label: string; hint: string }[] = [
   { key: 'can_add_students', label: 'Add students', hint: 'Create new student records (school-wide, not section-scoped — a student has no section until enrolled)' },
-  { key: 'can_enroll_students', label: 'Enroll students', hint: 'Enroll a student into a class within this section' },
+  { key: 'can_enroll_students', label: 'Enroll students', hint: 'Enroll a student into a class within this section, and set which optional subjects each student takes' },
   { key: 'can_assign_teachers', label: 'Assign teachers', hint: 'Assign a teacher to a class within this section' },
-  { key: 'can_download_documents', label: 'Download documents', hint: 'Generate/download report cards and transcripts for classes within this section' }
+  { key: 'can_download_documents', label: 'Download documents', hint: 'Generate/download report cards and transcripts for classes within this section' },
+  { key: 'can_manage_assessments', label: 'Assessment layout', hint: 'Create and manage the assessment layout (fields, max scores, Total, Pre-CA columns) for this section only. Cannot touch the school default or other sections, and cannot delete a field that already has scores.' }
 ]
 
 export default function SectionAdminsPage() {
@@ -176,7 +177,7 @@ export default function SectionAdminsPage() {
       />
 
       <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
-        A section admin is still a teacher — they keep their normal teacher dashboard. These toggles only add the ability to add students, enroll students, assign teachers to classes, and/or download report cards/transcripts, scoped to the section(s) below. They can never delete anything or touch score entry.
+        A section admin is still a teacher — they keep their normal teacher dashboard. These toggles only add the ability to add students, enroll students (and set their optional subjects), assign teachers to classes, download report cards/transcripts, and/or manage the section's own assessment layout, scoped to the section(s) below. They can never remove students or assignments, change the school default layout, or delete a field that already has recorded scores.
       </div>
 
       <Card>

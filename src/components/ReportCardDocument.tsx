@@ -1,5 +1,5 @@
-import { forwardRef } from 'react'
-import { formatDate, initials, ordinalSuffix } from '@/lib/utils'
+import { forwardRef, useCallback, useLayoutEffect, useRef, useState, type MutableRefObject } from 'react'
+import { formatDate, initials, ordinalSuffix, fmt2 } from '@/lib/utils'
 import { DocumentHeader, DocumentFooter, documentTableHeaderStyle, documentCellBorderColor } from './DocumentChrome'
 import type {
   Student, Class, Term, School, GradeRange, Attendance, Comment,
@@ -22,21 +22,17 @@ import type {
 const PAGE_WIDTH_PX = 780
 const PAGE_HEIGHT_PX = Math.round(PAGE_WIDTH_PX * (297 / 210)) // 1103
 
-// Fixed row count for the subjects table, regardless of how many
-// subjects actually have scores — this is what gives every report
-// card the same shape whether it's a 5-subject or 17-subject class.
-// Superseded the earlier dynamic scale-to-fit approach: that made the
-// page fit correctly, but a shorter subject list left the whole middle
-// section vertically centered (floating below the header instead of
-// starting immediately under it) and the page's *visual density*
-// still varied card to card. Padding to a constant row count fixes
-// both — content always starts right under the photo, and the table
-// itself is always the same height.
-// Trimmed from 20 to 17 to make room for the new branded header band
-// + footer credit line below (see DocumentChrome) within the same
-// fixed one-page budget — a school with more than 17 subjects still
-// never gets truncated, just a taller table, exactly as before.
-const SUBJECT_ROW_SLOTS = 17
+// Upper bound on the subjects-table row count. Every card is padded with
+// blank rows up to this number so cards look the same shape whether a
+// class has 5 subjects or 17 — BUT the blank rows are adaptive: the
+// component measures itself after layout and drops blank rows one at a
+// time until the whole card fits on one A4 page (see emptyRows below).
+// The taller branded header, term bar, info bar and footer made a fixed
+// slot count overflow the page budget; a container with overflow:hidden
+// then silently cut off the bottom of the card (Affective/Psychomotor
+// boxes lost rows). Nothing here clips any more: if real content ever
+// exceeds one page, the page grows and pdfExport paginates it.
+const SUBJECT_ROW_SLOTS = 20
 
 // A school-configurable field's value for one subject row. Only fields
 // with show_on_report_card=true are ever passed in here — the caller
@@ -104,19 +100,50 @@ export const ReportCardDocument = forwardRef<HTMLDivElement, ReportCardDocumentP
   // doesn't have to duplicate the lookup.
   const overallRemark = gradeRanges.find(r => average >= r.min_score && average <= r.max_score)?.remark ?? null
 
-  // Pad (never truncate — a school with more than 20 subjects just gets
-  // a taller table, rather than silently dropping subjects) to a
-  // constant number of row slots.
+  // ── Adaptive blank rows ──────────────────────────────────────
+  // Start from the maximum padding, then (after layout) remove blank rows
+  // until the card is no taller than one page. Real subject rows are never
+  // removed.
+  const initialEmpty = Math.max(0, SUBJECT_ROW_SLOTS - rows.length)
+  const [emptyRows, setEmptyRows] = useState(initialEmpty)
+  const rootRef = useRef<HTMLDivElement | null>(null)
+  const setRefs = useCallback((el: HTMLDivElement | null) => {
+    rootRef.current = el
+    if (typeof ref === 'function') ref(el)
+    else if (ref) (ref as MutableRefObject<HTMLDivElement | null>).current = el
+  }, [ref])
+
+  const shapeKey = JSON.stringify([
+    rows.length, fieldColumns.length, gradeRanges.length, affectiveMetrics.length, psychomotorMetrics.length,
+    !!attendance, comment?.teacher_comment?.length ?? 0, comment?.management_comment?.length ?? 0
+  ])
+  const lastShape = useRef(shapeKey)
+  const justReset = useRef(false)
+  useLayoutEffect(() => {
+    if (lastShape.current !== shapeKey) {
+      lastShape.current = shapeKey
+      justReset.current = true
+      setEmptyRows(initialEmpty)
+    }
+  }, [shapeKey, initialEmpty])
+
+  // Runs after every render: while the card is taller than one page, drop a blank row
+  useLayoutEffect(() => {
+    if (justReset.current) { justReset.current = false; return }
+    const el = rootRef.current
+    if (el && emptyRows > 0 && el.offsetHeight > PAGE_HEIGHT_PX + 1) setEmptyRows(n => Math.max(0, n - 1))
+  })
+
   const rowSlots: (ReportCardRow | null)[] = [
     ...rows,
-    ...Array.from({ length: Math.max(0, SUBJECT_ROW_SLOTS - rows.length) }, () => null)
+    ...Array.from({ length: emptyRows }, () => null)
   ]
 
   return (
     <div
-      ref={ref}
-      className="relative bg-white force-light-surface flex flex-col overflow-hidden"
-      style={{ fontSize: '10.5px', width: PAGE_WIDTH_PX, height: PAGE_HEIGHT_PX }}
+      ref={setRefs}
+      className="relative bg-white force-light-surface flex flex-col"
+      style={{ fontSize: '10.5px', width: PAGE_WIDTH_PX, minHeight: PAGE_HEIGHT_PX }}
     >
       {school?.watermark_url && (
         <img src={school.watermark_url} alt="" className="absolute inset-0 m-auto max-h-56 max-w-56 opacity-[0.06] pointer-events-none select-none" />
@@ -125,7 +152,7 @@ export const ReportCardDocument = forwardRef<HTMLDivElement, ReportCardDocumentP
       {/* Full-bleed branded band, edge to edge — everything else below stays inset */}
       <DocumentHeader school={school} documentType="REPORT CARD" primaryColor={primaryColor} secondaryColor={secondaryColor} compact />
 
-      <div className="relative flex flex-col flex-1 min-h-0 px-7 pb-6">
+      <div className="relative flex flex-col flex-1 px-7 pb-6">
         {/* ── Header: always pinned to the top of the page ── */}
         <div className="shrink-0">
           {/* Term/session label bar — echoes the reference PDF's dark
@@ -135,7 +162,7 @@ export const ReportCardDocument = forwardRef<HTMLDivElement, ReportCardDocumentP
             style={{ backgroundColor: primaryColor, fontSize: '9.5px' }}
           >
             <span className="text-white font-semibold">{term?.name} — {cls?.session?.name}</span>
-            {position && <span className="text-white" style={{ opacity: 0.85 }}>Avg: {average}%  •  Position: {ordinalSuffix(position.rank)}/{position.outOf}</span>}
+            {position && <span className="text-white" style={{ opacity: 0.85 }}>Avg: {fmt2(average)}%  •  Position: {ordinalSuffix(position.rank)}/{position.outOf}</span>}
           </div>
 
           {/* Student info bar — light tint instead of the reference's
@@ -166,7 +193,7 @@ export const ReportCardDocument = forwardRef<HTMLDivElement, ReportCardDocumentP
             sections follow directly after with minimal spacing, footer
             stays pinned to the bottom of the fixed page regardless of
             how much of this section is actually filled. ── */}
-        <div className="flex-1 min-h-0 overflow-hidden">
+        <div className="flex-1">
           <table className="w-full border-collapse mb-2" style={{ fontSize: '10px' }}>
             <thead>
               <tr style={documentTableHeaderStyle(primaryColor)}>
@@ -186,10 +213,10 @@ export const ReportCardDocument = forwardRef<HTMLDivElement, ReportCardDocumentP
                   {fieldColumns.map(col => {
                     const fv = r?.fields.find(f => f.field_id === col.id)
                     return (
-                      <td key={col.id} className="text-center py-1 px-1" style={{ border: `1px solid ${documentCellBorderColor}` }}>{fv?.value ?? ''}</td>
+                      <td key={col.id} className="text-center py-1 px-1" style={{ border: `1px solid ${documentCellBorderColor}` }}>{fv ? fmt2(fv.value) : ''}</td>
                     )
                   })}
-                  <td className="text-center py-1 px-1 font-semibold" style={{ border: `1px solid ${documentCellBorderColor}` }}>{r?.total ?? ''}</td>
+                  <td className="text-center py-1 px-1 font-semibold" style={{ border: `1px solid ${documentCellBorderColor}` }}>{r ? fmt2(r.total) : ''}</td>
                   <td className="text-center py-1 px-1 font-semibold" style={{ border: `1px solid ${documentCellBorderColor}`, color: primaryColor }}>{r?.grade ?? ''}</td>
                   <td className="py-1 px-1.5 text-muted-foreground" style={{ border: `1px solid ${documentCellBorderColor}` }}>{r?.remark ?? ''}</td>
                 </tr>
@@ -201,8 +228,8 @@ export const ReportCardDocument = forwardRef<HTMLDivElement, ReportCardDocumentP
           <div className="grid grid-cols-3 gap-2 mb-3" style={{ fontSize: '9px' }}>
             <div className="border rounded p-1.5" style={{ borderColor: `${secondaryColor}40` }}>
               <p className="font-semibold mb-1 pb-0.5 border-b" style={{ color: primaryColor, borderColor: secondaryColor, fontSize: '9.5px' }}>Performance Summary</p>
-              <div className="flex justify-between"><span className="text-muted-foreground">Total</span><strong>{grandTotal}</strong></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">Average</span><strong>{average}</strong></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Total</span><strong>{fmt2(grandTotal)}</strong></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Average</span><strong>{fmt2(average)}</strong></div>
               {position && (
                 <div className="flex justify-between"><span className="text-muted-foreground">Position</span><strong>{ordinalSuffix(position.rank)}/{position.outOf}</strong></div>
               )}
@@ -318,7 +345,7 @@ function RatingGrid({ title, metrics, scores, color, borderColor }: RatingGridPr
             const rating = scores.find(s => s.metric_id === m.id)?.rating
             return (
               <tr key={m.id} className="border-t" style={{ borderColor: '#f3f3f3' }}>
-                <td className="py-0.5 text-muted-foreground truncate max-w-[90px]">{m.name}</td>
+                <td className="py-0.5 text-muted-foreground">{m.name}</td>
                 {RATING_COLUMNS.map(r => (
                   <td key={r} className="text-center py-0.5" style={{ color }}>
                     {rating === r ? '●' : ''}

@@ -5,11 +5,13 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import {
   Plus, Loader2, ClipboardList, MoreVertical, Pencil, Trash2, Star,
-  Eye, EyeOff, Sigma, ListChecks
+  Eye, EyeOff, Sigma, ListChecks, Layers, Copy, FilePlus2
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import { logAudit } from '@/lib/audit'
+import { useAssessmentLayouts } from '@/lib/layouts'
+import { round2 } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input, Label } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -26,7 +28,7 @@ import { Switch } from '@/components/ui/switch'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Badge } from '@/components/ui/badge'
 import toast from 'react-hot-toast'
-import type { AssessmentCategory, ScoreFieldSource, ScoreFieldType, ScoreComputeOperation } from '@/types'
+import type { AssessmentCategory, SchoolSection, ScoreFieldSource, ScoreFieldType, ScoreComputeOperation } from '@/types'
 
 const OPERATION_LABEL: Record<ScoreComputeOperation, string> = {
   sum: 'Sum',
@@ -57,9 +59,32 @@ interface SourceSelection {
   weight: number
 }
 
-export default function AssessmentsPage() {
+// Rendered two ways:
+//  * school admin  (no props): can switch between the school-wide default
+//    layout and any section's own layout, and create/remove section layouts.
+//  * section admin (lockedSectionId): sees and edits ONLY that section's
+//    layout. The database enforces the same boundary (RLS + can_manage_layout),
+//    this just keeps the UI from offering what would be rejected.
+export default function AssessmentsPage({ lockedSectionId }: { lockedSectionId?: string } = {}) {
   const { schoolId, profile } = useAuth()
   const qc = useQueryClient()
+  const [pickedKey, setPickedKey] = useState<string>('default')
+  const sectionKey = lockedSectionId ?? pickedKey
+  const [removeLayoutOpen, setRemoveLayoutOpen] = useState(false)
+
+  const { data: layouts = [], isLoading: loadingLayouts } = useAssessmentLayouts(schoolId)
+  const { data: sections = [] } = useQuery({
+    queryKey: ['school-sections-for-layouts', schoolId],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('school_sections').select('*').eq('school_id', schoolId!).order('order_index')
+      if (error) throw error
+      return data as SchoolSection[]
+    },
+    enabled: !!schoolId
+  })
+  const currentSection = sectionKey === 'default' ? null : sections.find(s => s.id === sectionKey) ?? null
+  const layout = sectionKey === 'default' ? layouts.find(l => l.section_id === null) : layouts.find(l => l.section_id === sectionKey)
+  const layoutId = layout?.id
   const [dialog, setDialog] = useState<AssessmentCategory | 'new' | null>(null)
   const [deleteTarget, setDelete] = useState<AssessmentCategory | null>(null)
   const [previewOpen, setPreviewOpen] = useState(false)
@@ -68,20 +93,21 @@ export default function AssessmentsPage() {
   const inv = () => {
     qc.invalidateQueries({ queryKey: ['assessment-categories', schoolId] })
     qc.invalidateQueries({ queryKey: ['score-field-sources', schoolId] })
+    qc.invalidateQueries({ queryKey: ['assessment-layouts', schoolId] })
   }
 
   const { data: categories = [], isLoading } = useQuery({
-    queryKey: ['assessment-categories', schoolId],
+    queryKey: ['assessment-categories', schoolId, layoutId],
     queryFn: async () => {
       const { data, error } = await supabase.from('assessment_categories')
-        .select('*').eq('school_id', schoolId!).order('order_index')
+        .select('*').eq('school_id', schoolId!).eq('layout_id', layoutId!).order('order_index')
       if (error) throw error
       return data as AssessmentCategory[]
     },
-    enabled: !!schoolId
+    enabled: !!schoolId && !!layoutId
   })
 
-  const { data: allSources = [] } = useQuery({
+  const { data: schoolSources = [] } = useQuery({
     queryKey: ['score-field-sources', schoolId],
     queryFn: async () => {
       const { data, error } = await supabase.from('score_field_sources').select('*').eq('school_id', schoolId!)
@@ -90,6 +116,11 @@ export default function AssessmentsPage() {
     },
     enabled: !!schoolId
   })
+  // Only this layout's sources (fields can only source from their own layout)
+  const allSources = useMemo(() => {
+    const ids = new Set(categories.map(c => c.id))
+    return schoolSources.filter(s => ids.has(s.field_id))
+  }, [schoolSources, categories])
 
   const inputFields = useMemo(() => categories.filter(c => c.field_type === 'input'), [categories])
   const totalField = useMemo(() => categories.find(c => c.is_total_field), [categories])
@@ -165,7 +196,7 @@ export default function AssessmentsPage() {
 
       if (dialog === 'new') {
         const { data, error } = await supabase.from('assessment_categories')
-          .insert({ ...payload, school_id: schoolId, is_active: true }).select().single()
+          .insert({ ...payload, school_id: schoolId, layout_id: layoutId, is_active: true }).select().single()
         if (error) throw error
         fieldId = data.id
         action = 'CREATE'
@@ -282,9 +313,9 @@ export default function AssessmentsPage() {
     onError: (e: Error) => toast.error(e.message)
   })
 
-  const inputMaxTotal = inputFields.filter(c => c.is_active).reduce((sum, c) => sum + Number(c.max_score), 0)
+  const inputMaxTotal = round2(inputFields.filter(c => c.is_active).reduce((sum, c) => sum + Number(c.max_score), 0))
   const selectedSourceCount = Object.values(sources).filter(s => s.selected).length
-  const selectedWeightSum = Object.values(sources).filter(s => s.selected).reduce((sum, s) => sum + (Number(s.weight) || 0), 0)
+  const selectedWeightSum = round2(Object.values(sources).filter(s => s.selected).reduce((sum, s) => sum + (Number(s.weight) || 0), 0))
 
   // The live "this field will be out of X points" preview, computed
   // the exact same way the DB does (see resolve_score_fields /
@@ -313,21 +344,148 @@ export default function AssessmentsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sources, categories, form.watch('compute_operation')])
 
+  // Create this section's own layout. "copy" clones the school default AND moves the
+  // section's existing scores onto the clones (done atomically in the database), so
+  // nothing already entered disappears. A blank layout is refused by the database when
+  // the section already has scores.
+  const createLayout = useMutation({
+    mutationFn: async (copy: boolean) => {
+      if (!currentSection) throw new Error('Choose a section first')
+      const { data, error } = await supabase.rpc('create_section_layout', {
+        p_section_id: currentSection.id, p_name: `${currentSection.name} layout`, p_copy_default: copy
+      })
+      if (error) throw error
+      return { id: data as string, copy }
+    },
+    onSuccess: ({ id, copy }) => {
+      qc.invalidateQueries() // scores may have moved onto new fields — refresh everything that reads them
+      toast.success(copy ? `Layout created from the school default for ${currentSection?.name}` : `Blank layout created for ${currentSection?.name}`)
+      logAudit({ schoolId: schoolId!, userId: profile?.id ?? null, action: 'CREATE', entityType: 'assessment_layout', entityId: id, newValue: { section: currentSection?.name, copied_from_default: copy } })
+    },
+    onError: (e: Error) => toast.error(e.message.replace(/^create_section_layout:\s*/, ''))
+  })
+
+  const removeLayout = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.rpc('delete_assessment_layout', { p_layout_id: layoutId })
+      if (error) throw error
+    },
+    onSuccess: () => {
+      qc.invalidateQueries()
+      setRemoveLayoutOpen(false)
+      if (!lockedSectionId) setPickedKey('default')
+      toast.success(`${currentSection?.name ?? 'Section'} now uses the school default layout`)
+      logAudit({ schoolId: schoolId!, userId: profile?.id ?? null, action: 'DELETE', entityType: 'assessment_layout', entityId: layoutId, newValue: { section: currentSection?.name } })
+    },
+    onError: (e: Error) => { setRemoveLayoutOpen(false); toast.error(e.message.replace(/^delete_assessment_layout:\s*/, '')) }
+  })
+
+  const sectionsWithOwnLayout = new Set(layouts.filter(l => l.section_id).map(l => l.section_id as string))
+
+  if (loadingLayouts) {
+    return <div className="flex justify-center py-16"><Spinner size="lg" /></div>
+  }
+
   return (
     <div>
       <PageHeader
         title="Assessment Fields"
-        description="Configure how scores are entered and combined — every field, its max score, and how (or whether) it's computed is entirely up to your school"
-        action={
+        description={lockedSectionId
+          ? `The assessment layout for ${currentSection?.name ?? 'your section'} — used for Score Entry, the Pre-CA sheet and report cards of this section's classes only`
+          : "Configure how scores are entered and combined — every field, its max score, and how (or whether) it's computed is entirely up to your school"}
+        action={layout ? (
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => setPreviewOpen(true)}>
               <Eye className="mr-2 h-4 w-4" />Preview Report Card Columns
             </Button>
             <Button onClick={openCreate}><Plus className="mr-2 h-4 w-4" />Add Field</Button>
           </div>
-        }
+        ) : undefined}
       />
 
+      {/* ── Which layout am I editing? (school admin only) ── */}
+      {!lockedSectionId && (
+        <Card className="mb-4">
+          <CardContent className="pt-4 pb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <Layers className="h-5 w-5 mt-0.5 text-muted-foreground" />
+              <div className="text-sm">
+                <div className="font-medium">Layout</div>
+                <p className="text-xs text-muted-foreground max-w-xl">
+                  {sectionKey === 'default'
+                    ? 'The school default applies to every class, except in sections that have their own layout.'
+                    : sectionsWithOwnLayout.has(sectionKey)
+                      ? `${currentSection?.name} has its own layout — it applies only to that section's classes. Section admins you've granted "manage assessments" can edit it too.`
+                      : `${currentSection?.name} currently uses the school default. Create a layout below to give it its own.`}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Select value={sectionKey} onValueChange={setPickedKey}>
+                <SelectTrigger className="w-64"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="default">School default (whole school)</SelectItem>
+                  {sections.map(sec => (
+                    <SelectItem key={sec.id} value={sec.id}>
+                      {sec.name} — {sectionsWithOwnLayout.has(sec.id) ? 'own layout' : 'uses default'}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {layout && layout.section_id && (
+                <Button variant="outline" size="sm" onClick={() => setRemoveLayoutOpen(true)}>
+                  <Trash2 className="mr-1.5 h-4 w-4" />Remove
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+      {lockedSectionId && layout && (
+        <div className="mb-4 flex justify-end">
+          <Button variant="outline" size="sm" onClick={() => setRemoveLayoutOpen(true)}>
+            <Trash2 className="mr-1.5 h-4 w-4" />Remove this layout
+          </Button>
+        </div>
+      )}
+
+      {/* ── This section has no layout of its own yet ── */}
+      {!layout && (
+        <Card>
+          <CardContent className="py-8">
+            <div className="mx-auto max-w-xl space-y-4 text-center">
+              <Layers className="mx-auto h-10 w-10 text-muted-foreground" />
+              <h3 className="text-base font-semibold">{currentSection?.name ?? 'This section'} uses the school default layout</h3>
+              <p className="text-sm text-muted-foreground">
+                Create a layout of its own to choose different assessment fields, maximum scores and Total for this section's classes. Other sections are not affected.
+              </p>
+              <div className="grid gap-3 sm:grid-cols-2 text-left">
+                <button
+                  onClick={() => createLayout.mutate(true)}
+                  disabled={createLayout.isPending || !currentSection}
+                  className="rounded-lg border p-4 hover:bg-muted/50 transition-colors disabled:opacity-50"
+                >
+                  <Copy className="h-5 w-5 mb-2 text-primary" />
+                  <div className="text-sm font-medium">Start from a copy of the school default</div>
+                  <p className="text-xs text-muted-foreground mt-1">Recommended. Keeps the fields you have now and carries over any scores already entered for this section.</p>
+                </button>
+                <button
+                  onClick={() => createLayout.mutate(false)}
+                  disabled={createLayout.isPending || !currentSection}
+                  className="rounded-lg border p-4 hover:bg-muted/50 transition-colors disabled:opacity-50"
+                >
+                  <FilePlus2 className="h-5 w-5 mb-2 text-primary" />
+                  <div className="text-sm font-medium">Start blank</div>
+                  <p className="text-xs text-muted-foreground mt-1">Build fields from scratch. Only possible before any scores exist for this section.</p>
+                </button>
+              </div>
+              {createLayout.isPending && <p className="text-xs text-muted-foreground flex items-center justify-center gap-2"><Loader2 className="h-3.5 w-3.5 animate-spin" />Creating…</p>}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {layout && (<>
       <div className="grid gap-4 sm:grid-cols-2 mb-4">
         <Card className="border-brand-200 bg-brand-50">
           <CardHeader className="pb-2">
@@ -457,6 +615,7 @@ export default function AssessmentsPage() {
           )}
         </CardContent>
       </Card>
+      </>)}
 
       {/* ── Add / Edit dialog ── */}
       <Dialog open={!!dialog} onOpenChange={o => !o && setDialog(null)}>
@@ -636,6 +795,21 @@ export default function AssessmentsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={removeLayoutOpen} onOpenChange={setRemoveLayoutOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove {currentSection?.name}'s own layout?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {currentSection?.name} will go back to the school default layout. This is only allowed while no scores have been recorded with this layout — if any have, it will be refused so nothing is lost.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction className="bg-destructive text-destructive-foreground" onClick={() => removeLayout.mutate()}>Remove layout</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={!!deleteTarget} onOpenChange={o => !o && setDelete(null)}>
         <AlertDialogContent>

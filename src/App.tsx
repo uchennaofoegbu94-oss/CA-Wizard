@@ -38,6 +38,7 @@ import ClassesPage          from '@/pages/school-admin/ClassesPage'
 import ClassDetailPage      from '@/pages/school-admin/ClassDetailPage'
 import StudentsPage         from '@/pages/school-admin/StudentsPage'
 import SubjectsPage         from '@/pages/school-admin/SubjectsPage'
+import StudentGroupsPage    from '@/pages/school-admin/StudentGroupsPage'
 import TeachersPage         from '@/pages/school-admin/TeachersPage'
 import SectionAdminsPage    from '@/pages/school-admin/SectionAdminsPage'
 import AssessmentsPage      from '@/pages/school-admin/AssessmentsPage'
@@ -157,6 +158,7 @@ function App() {
                   <Route path="/school/classes/:id" element={<AppShell><ClassDetailPage /></AppShell>} />
                   <Route path="/school/students"    element={<AppShell><StudentsPage /></AppShell>} />
                   <Route path="/school/subjects"    element={<AppShell><SubjectsPage /></AppShell>} />
+                  <Route path="/school/student-groups" element={<AppShell><StudentGroupsPage /></AppShell>} />
                   <Route path="/school/teachers"    element={<AppShell><TeachersPage /></AppShell>} />
                   <Route path="/school/section-admins" element={<AppShell><SectionAdminsPage /></AppShell>} />
                   <Route path="/school/assessments" element={<AppShell><AssessmentsPage /></AppShell>} />

@@ -5,6 +5,9 @@ import { ArrowLeft, Download, Loader2, Printer, Save } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import { exportNodeToPdf } from '@/lib/pdfExport'
+import { round2, sum2 } from '@/lib/utils'
+import { useAssessmentLayouts, layoutIdForSection } from '@/lib/layouts'
+import { useClassSubjectRoster, indexRoster, rankEntries } from '@/lib/subjectRoster'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { PageHeader, Spinner, EmptyState } from '@/components/ui/table'
@@ -80,7 +83,7 @@ export default function ReportCardPage() {
     enabled: ready
   })
 
-  const { data: subjects = [] } = useQuery({
+  const { data: offeredSubjects = [] } = useQuery({
     queryKey: ['reportcard-subjects', cls?.class_level_id],
     queryFn: async () => {
       const { data, error } = await supabase.from('subject_offerings').select('subject:subjects(*)').eq('class_level_id', cls!.class_level_id)
@@ -90,18 +93,35 @@ export default function ReportCardPage() {
     enabled: !!cls?.class_level_id
   })
 
+  // Subjects THIS student actually takes. Optional (elective) subjects the student
+  // didn't opt into are left off entirely — the database's roster is the single
+  // source of truth, shared with Score Entry and the broadsheet.
+  const { data: rosterRows, isError: rosterFailed } = useClassSubjectRoster(ready ? classId : null)
+  const roster = useMemo(() => indexRoster(rosterRows), [rosterRows])
+  const subjects = useMemo(() => {
+    if (rosterFailed) return offeredSubjects            // fail open rather than print a blank card
+    if (!rosterRows) return []                          // still loading
+    const takes = roster.subjectsByStudent.get(studentId)
+    return takes ? offeredSubjects.filter(s => takes.has(s.id)) : []
+  }, [offeredSubjects, rosterRows, rosterFailed, roster, studentId])
+
+  // The assessment layout this class uses (its section's own, else the school default)
+  const { data: layouts } = useAssessmentLayouts(schoolId)
+  const layoutId = layoutIdForSection(layouts, cls?.class_level?.section_id)
+
   // The school's report-card-visible fields (excluding the total field,
   // which is rendered as its own dedicated Total column), in
   // order_index order — these become this report card's dynamic
   // columns, and are the same across every subject since fields are
   // configured school-wide, not per subject.
   const { data: fieldColumns = [] } = useQuery({
-    queryKey: ['reportcard-field-columns', schoolId],
+    queryKey: ['reportcard-field-columns', schoolId, layoutId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('assessment_categories')
         .select('*')
         .eq('school_id', schoolId!)
+        .eq('layout_id', layoutId!)
         .eq('is_active', true)
         .eq('show_on_report_card', true)
         .eq('is_total_field', false)
@@ -109,7 +129,7 @@ export default function ReportCardPage() {
       if (error) throw error
       return (data as AssessmentCategory[]).map(f => ({ id: f.id, name: f.name }))
     },
-    enabled: !!schoolId
+    enabled: !!schoolId && !!layoutId
   })
 
   // One get_score_fields RPC call per subject this student takes —
@@ -202,30 +222,36 @@ export default function ReportCardPage() {
     enabled: ready
   })
 
-  // Ranking: for every subject, get every classmate's field breakdown
-  // via get_class_subject_term_results, then sum each student's
-  // is_total_field value (raw points, same combined-total basis the
-  // old term_total ranking used) across subjects.
+  // Ranking: for every subject the class offers, get every classmate's field breakdown
+  // via get_class_subject_term_results (which already leaves out students who don't take
+  // an optional subject), then add up each student's is_total_field across THEIR subjects.
+  // If everyone takes the same number of subjects, ranking is by total points exactly as
+  // before. If counts differ (electives in play) a raw total would penalise anyone with fewer
+  // subjects, so ranking switches to the average percentage — see rankEntries.
   const { data: classmateTotals = [] } = useQuery({
-    queryKey: ['reportcard-classmates', classId, termId, subjects.map(s => s.id).join(',')],
+    queryKey: ['reportcard-classmates', classId, termId, offeredSubjects.map(s => s.id).join(',')],
     queryFn: async () => {
-      const perSubject = await Promise.all(subjects.map(async subj => {
+      const perSubject = await Promise.all(offeredSubjects.map(async subj => {
         const { data, error } = await supabase.rpc('get_class_subject_term_results', {
           p_class_id: classId, p_subject_id: subj.id, p_term_id: termId
         })
         if (error) throw error
         return (data ?? []) as ScoreFieldValue[]
       }))
-      const totalsByStudent = new Map<string, number>()
+      const acc = new Map<string, { total: number; pctSum: number; count: number }>()
       perSubject.flat().forEach(row => {
         if (!row.is_total_field || !row.student_id) return
-        totalsByStudent.set(row.student_id, (totalsByStudent.get(row.student_id) ?? 0) + row.value)
+        const cur = acc.get(row.student_id) ?? { total: 0, pctSum: 0, count: 0 }
+        cur.total += row.value
+        cur.pctSum += row.max_value > 0 ? (row.value / row.max_value) * 100 : 0
+        cur.count += 1
+        acc.set(row.student_id, cur)
       })
-      return Array.from(totalsByStudent.entries())
-        .map(([studentId, total]) => ({ studentId, total }))
-        .sort((a, b) => b.total - a.total)
+      return rankEntries(Array.from(acc.entries()).map(([studentId, v]) => ({
+        studentId, total: round2(v.total), average: round2(v.pctSum / v.count), count: v.count
+      })))
     },
-    enabled: ready && subjects.length > 0
+    enabled: ready && offeredSubjects.length > 0
   })
 
   const position = useMemo(() => {
@@ -239,15 +265,15 @@ export default function ReportCardPage() {
       const fields = fieldsBySubject[subj.id] ?? []
       const totalField = fields.find(f => f.is_total_field)
       const percentage = totalField && totalField.max_value > 0
-        ? Math.round((totalField.value / totalField.max_value) * 10000) / 100
+        ? round2((totalField.value / totalField.max_value) * 100)
         : 0
       const { grade, remark } = gradeFor(percentage, ranges)
       const visibleFields = fields.filter(f => f.show_on_report_card && !f.is_total_field)
       return {
         subject: subj,
         fields: visibleFields.map(f => ({ field_id: f.field_id, value: f.value })),
-        total: totalField?.value ?? 0,
-        totalMax: totalField?.max_value ?? 0,
+        total: round2(totalField?.value ?? 0),
+        totalMax: round2(totalField?.max_value ?? 0),
         percentage,
         grade,
         remark
@@ -255,8 +281,9 @@ export default function ReportCardPage() {
     })
   }, [subjects, fieldsBySubject, gradingSystem])
 
-  const grandTotal = rows.reduce((sum, r) => sum + r.total, 0)
-  const average = rows.length > 0 ? Math.round((rows.reduce((s, r) => s + r.percentage, 0) / rows.length) * 100) / 100 : 0
+  // 2dp rule: client-side sums leak float noise (120.52000000000001), so round before display AND before saving into a snapshot
+  const grandTotal = sum2(rows.map(r => r.total))
+  const average = rows.length > 0 ? round2(rows.reduce((s, r) => s + r.percentage, 0) / rows.length) : 0
 
   const saveSnapshot = useMutation({
     mutationFn: async () => {

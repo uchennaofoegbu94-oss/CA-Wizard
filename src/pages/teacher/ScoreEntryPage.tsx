@@ -14,7 +14,10 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { clampScore } from '@/lib/utils'
+import { clampScore, round2 } from '@/lib/utils'
+import { useAssessmentLayouts, layoutIdForSection } from '@/lib/layouts'
+import { useClassSubjectRoster, indexRoster } from '@/lib/subjectRoster'
+import { useRestrictedSubjectIds } from '@/lib/studentGroups'
 import toast from 'react-hot-toast'
 import type {
   Term, AssessmentCategory, Student, StudentEnrollment,
@@ -69,7 +72,14 @@ export default function ScoreEntryPage() {
     [assignments, selectedClassId]
   )
 
-  const selectedClassLevelId = uniqueClasses.find(c => c.id === selectedClassId)?.class_level_id
+  const classForLayout = uniqueClasses.find(c => c.id === selectedClassId)
+  const selectedClassLevelId = classForLayout?.class_level_id
+
+  // The assessment layout this class uses: its section's own layout if the section
+  // has one, otherwise the school default. (The score RPCs resolve the same thing
+  // server-side; this picks the matching input COLUMNS.)
+  const { data: layouts } = useAssessmentLayouts(schoolId)
+  const layoutId = layoutIdForSection(layouts, classForLayout?.class_level?.section_id)
 
   const { data: levelOfferedSubjects = [] } = useQuery({
     queryKey: ['level-offered-subjects', selectedClassLevelId],
@@ -120,19 +130,20 @@ export default function ScoreEntryPage() {
   // Every INPUT field the school has configured — "Exam" is just
   // another one of these now, no special-casing needed anywhere below.
   const { data: inputFields = [] } = useQuery({
-    queryKey: ['active-input-fields', schoolId],
+    queryKey: ['active-input-fields', schoolId, layoutId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('assessment_categories')
         .select('*')
         .eq('school_id', schoolId!)
+        .eq('layout_id', layoutId!)
         .eq('is_active', true)
         .eq('field_type', 'input')
         .order('order_index')
       if (error) throw error
       return data as AssessmentCategory[]
     },
-    enabled: !!schoolId
+    enabled: !!schoolId && !!layoutId
   })
 
   // The school's actual configured Total field (a computed field, not
@@ -143,18 +154,19 @@ export default function ScoreEntryPage() {
   // configured weights, commonly 100, regardless of how many input
   // fields exist or what their individual max_scores add up to).
   const { data: totalField } = useQuery({
-    queryKey: ['configured-total-field', schoolId],
+    queryKey: ['configured-total-field', schoolId, layoutId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('assessment_categories')
         .select('*')
         .eq('school_id', schoolId!)
+        .eq('layout_id', layoutId!)
         .eq('is_total_field', true)
         .maybeSingle()
       if (error) throw error
       return data as AssessmentCategory | null
     },
-    enabled: !!schoolId
+    enabled: !!schoolId && !!layoutId
   })
 
   const { data: enrollments = [], isLoading: loadingStudents } = useQuery({
@@ -170,10 +182,24 @@ export default function ScoreEntryPage() {
     enabled: !!selectedClassId
   })
 
-  const students = useMemo(() =>
+  // Optional (elective) subjects: only students who take the selected subject are listed.
+  // The roster comes from the database's student_takes_subject(), the same rule the
+  // broadsheet and report cards use, so the three can never disagree.
+  const { data: rosterRows } = useClassSubjectRoster(selectedClassId || null)
+  // Subjects only SOME students take: individually-chosen electives AND group-restricted subjects (Science/Arts/religion…)
+  const { data: restrictedIds } = useRestrictedSubjectIds(selectedClassLevelId)
+  const roster = useMemo(() => indexRoster(rosterRows), [rosterRows])
+  const subjectIsOptional = !!selectedSubjectId && !!restrictedIds?.has(selectedSubjectId)
+
+  const allEnrolledStudents = useMemo(() =>
     enrollments.map(e => e.student!).sort((a, b) => a.last_name.localeCompare(b.last_name)),
     [enrollments]
   )
+  const students = useMemo(() => {
+    if (!subjectIsOptional) return allEnrolledStudents
+    const takers = roster.studentsBySubject.get(selectedSubjectId)
+    return allEnrolledStudents.filter(s => takers?.has(s.id))
+  }, [allEnrolledStudents, subjectIsOptional, roster, selectedSubjectId])
 
   const { data: existingScores = [] } = useQuery({
     queryKey: ['existing-scores', selectedClassId, selectedSubjectId, currentTerm?.id],
@@ -309,12 +335,12 @@ export default function ScoreEntryPage() {
   }
 
   const isLocked = currentTerm?.is_locked ?? false
-  const inputMaxTotal = inputFields.reduce((sum, f) => sum + f.max_score, 0)
+  const inputMaxTotal = round2(inputFields.reduce((sum, f) => sum + f.max_score, 0))
 
   const totalFor = (studentId: string): number => {
     let total = 0
     inputFields.forEach(f => { total += localScores[`${studentId}:${f.id}`] ?? 0 })
-    return total
+    return round2(total)
   }
 
   // classId/subjectId/termId are explicit parameters rather than read
@@ -562,6 +588,11 @@ export default function ScoreEntryPage() {
         <EmptyState title="No score fields configured" description="Ask your school admin to set up assessment fields for this school." />
       ) : loadingStudents ? (
         <div className="flex justify-center py-16"><Spinner size="lg" /></div>
+      ) : students.length === 0 && subjectIsOptional && allEnrolledStudents.length > 0 ? (
+        <EmptyState
+          title="No students take this subject yet"
+          description="This subject isn't taken by everyone at this level. Your school admin (or a section admin) puts students in the right group, or ticks who takes it, on the class's page."
+        />
       ) : students.length === 0 ? (
         <EmptyState title="No students enrolled" description="This class has no active enrolled students yet." />
       ) : (

@@ -6,6 +6,9 @@ import JSZip from 'jszip'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import { canUseBulkGeneration } from '@/lib/tierLimits'
+import { round2, sum2 } from '@/lib/utils'
+import { useAssessmentLayouts, layoutIdForSection } from '@/lib/layouts'
+import { useClassSubjectRoster, indexRoster, rankEntries } from '@/lib/subjectRoster'
 import { combineNodesToPdf, nodeToPdfBlob } from '@/lib/pdfExport'
 import { Button } from '@/components/ui/button'
 import { PageHeader, Spinner, EmptyState } from '@/components/ui/table'
@@ -82,7 +85,7 @@ export default function BulkReportCardPage() {
     enabled: ready
   })
 
-  const { data: subjects = [] } = useQuery({
+  const { data: subjects = [] } = useQuery({  // every subject offered at this level; each student's own list is derived below
     queryKey: ['bulk-reportcard-subjects', cls?.class_level_id],
     queryFn: async () => {
       const { data, error } = await supabase.from('subject_offerings').select('subject:subjects(*)').eq('class_level_id', cls!.class_level_id)
@@ -107,15 +110,24 @@ export default function BulkReportCardPage() {
   const students = useMemo(() => enrollments.map(e => e.student!).filter(Boolean), [enrollments])
   const studentIds = useMemo(() => students.map(s => s.id), [students])
 
-  // The school's report-card-visible fields (excluding the total field),
+  // Who takes what (optional subjects) — same database rule as Score Entry and the broadsheet
+  const { data: rosterRows, isError: rosterFailed } = useClassSubjectRoster(ready ? classId : null)
+  const roster = useMemo(() => indexRoster(rosterRows), [rosterRows])
+
+  // The assessment layout this class uses (its section's own, else the school default)
+  const { data: layouts } = useAssessmentLayouts(schoolId)
+  const layoutId = layoutIdForSection(layouts, cls?.class_level?.section_id)
+
+  // The layout's report-card-visible fields (excluding the total field),
   // in order_index order — same dynamic columns as ReportCardPage.
   const { data: fieldColumns = [] } = useQuery({
-    queryKey: ['bulk-reportcard-field-columns', schoolId],
+    queryKey: ['bulk-reportcard-field-columns', schoolId, layoutId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('assessment_categories')
         .select('*')
         .eq('school_id', schoolId!)
+        .eq('layout_id', layoutId!)
         .eq('is_active', true)
         .eq('show_on_report_card', true)
         .eq('is_total_field', false)
@@ -123,7 +135,7 @@ export default function BulkReportCardPage() {
       if (error) throw error
       return (data as AssessmentCategory[]).map(f => ({ id: f.id, name: f.name }))
     },
-    enabled: !!schoolId
+    enabled: !!schoolId && !!layoutId
   })
 
   const { data: gradingSystem } = useQuery({
@@ -207,20 +219,30 @@ export default function BulkReportCardPage() {
     enabled: ready && studentIds.length > 0
   })
 
-  // Class-wide totals per student, for ranking — sum of each student's
-  // is_total_field value across every subject.
-  const totalsByStudent = useMemo(() => {
-    const map = new Map<string, number>()
+  // Class-wide figures per student, for ranking: total points, average percentage and how many
+  // subjects they have. get_class_all_fields already leaves out subjects a student doesn't take.
+  const studentAgg = useMemo(() => {
+    const acc = new Map<string, { total: number; pctSum: number; count: number }>()
     allFields.forEach(row => {
       if (!row.is_total_field || !row.student_id) return
-      map.set(row.student_id, (map.get(row.student_id) ?? 0) + row.value)
+      const cur = acc.get(row.student_id) ?? { total: 0, pctSum: 0, count: 0 }
+      cur.total += row.value
+      cur.pctSum += row.max_value > 0 ? (row.value / row.max_value) * 100 : 0
+      cur.count += 1
+      acc.set(row.student_id, cur)
     })
-    return map
+    return acc
   }, [allFields])
 
+  // Same total-points ranking as before when everyone has the same number of subjects;
+  // average-based when electives make the counts differ (see rankEntries).
   const ranking = useMemo(() => {
-    return [...students].sort((a, b) => (totalsByStudent.get(b.id) ?? 0) - (totalsByStudent.get(a.id) ?? 0)).map(s => s.id)
-  }, [students, totalsByStudent])
+    const ranked = rankEntries(students.map(s => {
+      const a = studentAgg.get(s.id)
+      return { studentId: s.id, total: round2(a?.total ?? 0), average: a && a.count > 0 ? round2(a.pctSum / a.count) : 0, count: a?.count ?? 0 }
+    }))
+    return ranked.map(r => r.studentId)
+  }, [students, studentAgg])
 
   const gradeRanges = gradingSystem?.grade_ranges ?? []
 
@@ -236,26 +258,30 @@ export default function BulkReportCardPage() {
 
   const perStudent: PerStudentData[] = useMemo(() => {
     return students.map(student => {
-      const rows: ReportCardRow[] = subjects.map(subj => {
+      // Only the subjects THIS student takes (optional ones they opted out of are left off)
+      const takes = roster.subjectsByStudent.get(student.id)
+      const studentSubjects = rosterFailed || !rosterRows ? subjects : subjects.filter(subj => takes?.has(subj.id))
+      const rows: ReportCardRow[] = studentSubjects.map(subj => {
         const fieldsForCell = allFields.filter(f => f.student_id === student.id && f.subject_id === subj.id)
         const totalField = fieldsForCell.find(f => f.is_total_field)
         const percentage = totalField && totalField.max_value > 0
-          ? Math.round((totalField.value / totalField.max_value) * 10000) / 100
+          ? round2((totalField.value / totalField.max_value) * 100)
           : 0
         const { grade, remark } = gradeFor(percentage, gradeRanges)
         const visibleFields = fieldsForCell.filter(f => f.show_on_report_card && !f.is_total_field)
         return {
           subject: subj,
           fields: visibleFields.map(f => ({ field_id: f.field_id, value: f.value })),
-          total: totalField?.value ?? 0,
-          totalMax: totalField?.max_value ?? 0,
+          total: round2(totalField?.value ?? 0),
+          totalMax: round2(totalField?.max_value ?? 0),
           percentage,
           grade,
           remark
         }
       })
-      const grandTotal = rows.reduce((sum, r) => sum + r.total, 0)
-      const average = rows.length > 0 ? Math.round((rows.reduce((s, r) => s + r.percentage, 0) / rows.length) * 100) / 100 : 0
+      // 2dp rule — client-side sums leak float noise, so round before display and before saving snapshots
+      const grandTotal = sum2(rows.map(r => r.total))
+      const average = rows.length > 0 ? round2(rows.reduce((s, r) => s + r.percentage, 0) / rows.length) : 0
       const rankIdx = ranking.indexOf(student.id)
       const position = rankIdx === -1 ? null : { rank: rankIdx + 1, outOf: ranking.length }
       return {
@@ -268,9 +294,9 @@ export default function BulkReportCardPage() {
         comment: comments.find(c => c.student_id === student.id)
       }
     })
-  }, [students, subjects, allFields, gradeRanges, ranking, attendanceRows, comments])
+  }, [students, subjects, roster, rosterRows, rosterFailed, allFields, gradeRanges, ranking, attendanceRows, comments])
 
-  const isLoading = !cls || !term || (studentIds.length > 0 && allFields.length === 0 && totalsByStudent.size === 0)
+  const isLoading = !cls || !term || (studentIds.length > 0 && allFields.length === 0 && studentAgg.size === 0) || (!rosterRows && !rosterFailed)
   const classLabel = cls ? `${cls.class_level?.name ?? ''}${cls.class_arm ? ' ' + cls.class_arm.name : ''}`.trim() : ''
   const baseFilename = `${classLabel}_${term?.name ?? ''}_ReportCards`.replace(/\s+/g, '_')
 

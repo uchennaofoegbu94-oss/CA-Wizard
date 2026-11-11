@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { ShieldCheck, UserPlus, GraduationCap, Users, Loader2, FileText, Download } from 'lucide-react'
+import { ShieldCheck, UserPlus, GraduationCap, Users, Loader2, FileText, Download, ListChecks, Layers } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import { logAudit } from '@/lib/audit'
@@ -15,6 +15,11 @@ import { PageHeader, EmptyState, Spinner } from '@/components/ui/table'
 import { FormField, FormGrid } from '@/components/ui/form-field'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { SearchablePicker, type PickerOption } from '@/components/ui/searchable-picker'
+import { SubjectChoicesPanel } from '@/components/SubjectChoicesPanel'
+import { StudentGroupsPanel } from '@/components/StudentGroupsPanel'
+import { SubjectLoadCheck } from '@/components/SubjectLoadCheck'
+import AssessmentsPage from '@/pages/school-admin/AssessmentsPage'
 import toast from 'react-hot-toast'
 import type { Class, GenderType, Profile, Session, SectionAdmin, Student, StudentEnrollment, Subject, TeacherAssignment, Term } from '@/types'
 
@@ -44,6 +49,8 @@ export default function SectionAdminPage() {
   const canEnrollStudents = myGrants.some(g => g.can_enroll_students)
   const canAssignTeachers = myGrants.some(g => g.can_assign_teachers)
   const canDownloadDocuments = myGrants.some(g => g.can_download_documents)
+  const layoutGrants = myGrants.filter(g => g.can_manage_assessments)
+  const canManageAssessments = layoutGrants.length > 0
   const managedSectionIds = new Set(myGrants.map(g => g.section_id))
 
   const { data: currentSession } = useQuery({
@@ -109,11 +116,13 @@ export default function SectionAdminPage() {
         description={`Delegated permissions for: ${myGrants.map(g => g.section?.name).filter(Boolean).join(', ')}`}
       />
 
-      <Tabs defaultValue={canAddStudents ? 'add' : canEnrollStudents ? 'enroll' : canAssignTeachers ? 'assign' : 'documents'}>
+      <Tabs defaultValue={canAddStudents ? 'add' : canEnrollStudents ? 'enroll' : canAssignTeachers ? 'assign' : canManageAssessments ? 'layout' : 'documents'}>
         <TabsList>
           {canAddStudents && <TabsTrigger value="add"><UserPlus className="mr-1.5 h-4 w-4" />Add Student</TabsTrigger>}
           {canEnrollStudents && <TabsTrigger value="enroll"><GraduationCap className="mr-1.5 h-4 w-4" />Enroll Student</TabsTrigger>}
+          {canEnrollStudents && <TabsTrigger value="choices"><ListChecks className="mr-1.5 h-4 w-4" />Groups &amp; Subjects</TabsTrigger>}
           {canAssignTeachers && <TabsTrigger value="assign"><Users className="mr-1.5 h-4 w-4" />Assign Teacher</TabsTrigger>}
+          {canManageAssessments && <TabsTrigger value="layout"><Layers className="mr-1.5 h-4 w-4" />Assessment Layout</TabsTrigger>}
           {canDownloadDocuments && <TabsTrigger value="documents"><FileText className="mr-1.5 h-4 w-4" />Documents</TabsTrigger>}
         </TabsList>
 
@@ -132,12 +141,28 @@ export default function SectionAdminPage() {
           </TabsContent>
         )}
 
+        {canEnrollStudents && (
+          <TabsContent value="choices">
+            <SubjectChoicesTab
+              currentSession={currentSession}
+              managedClasses={allClasses.filter(c => classInManagedSection(c) && myGrants.some(g => g.can_enroll_students && g.section_id === c.class_level?.section_id))}
+              classLabel={classLabel}
+            />
+          </TabsContent>
+        )}
+
         {canAssignTeachers && (
           <TabsContent value="assign">
             <AssignTeacherPanel
               schoolId={schoolId!} profile={profile} qc={qc}
               managedClasses={allClasses.filter(classInManagedSection)} classLabel={classLabel}
             />
+          </TabsContent>
+        )}
+
+        {canManageAssessments && (
+          <TabsContent value="layout">
+            <AssessmentLayoutTab sections={layoutGrants.map(g => ({ id: g.section_id, name: g.section?.name ?? 'Section' }))} />
           </TabsContent>
         )}
 
@@ -303,6 +328,12 @@ function EnrollStudentPanel({ schoolId, profile, currentSession, qc, managedClas
   const managedClassIds = new Set(managedClasses.map(c => c.id))
   const enrolledInManagedClassIds = new Set(enrollments.filter(e => managedClassIds.has(e.class_id)).map(e => e.student_id))
   const enrollableStudents = students.filter(s => !enrolledInManagedClassIds.has(s.id))
+  const studentOptions: PickerOption[] = enrollableStudents.map(s => ({
+    value: s.id,
+    label: `${s.last_name}, ${s.first_name}${s.middle_name ? ' ' + s.middle_name : ''}`,
+    sublabel: s.admission_number,
+    searchText: `${s.first_name} ${s.middle_name ?? ''} ${s.last_name} ${s.admission_number}`
+  }))
   const loadingPickers = loadingStudents || loadingEnrollments
 
   const enroll = useMutation({
@@ -336,20 +367,19 @@ function EnrollStudentPanel({ schoolId, profile, currentSession, qc, managedClas
     <Card>
       <CardContent className="pt-6 space-y-4 max-w-lg">
         <FormField label="Student" required
-          hint={studentsError ? undefined : `${enrollableStudents.length} student${enrollableStudents.length !== 1 ? 's' : ''} available to enroll into your managed section(s)`}>
-          <Select value={studentId} onValueChange={setStudentId} disabled={loadingPickers || !!studentsError}>
-            <SelectTrigger>
-              <SelectValue placeholder={
-                studentsError ? "Couldn't load students — try refreshing" :
-                loadingPickers ? 'Loading…' :
-                enrollableStudents.length === 0 ? 'No students available to enroll' :
-                'Select a student'
-              } />
-            </SelectTrigger>
-            <SelectContent>
-              {enrollableStudents.map(s => <SelectItem key={s.id} value={s.id}>{s.last_name}, {s.first_name} ({s.admission_number})</SelectItem>)}
-            </SelectContent>
-          </Select>
+          hint={studentsError ? undefined : `${enrollableStudents.length} student${enrollableStudents.length !== 1 ? 's' : ''} available to enroll into your managed section(s) — search by name or admission number`}>
+          {studentsError ? (
+            <p className="text-sm text-destructive">Couldn&apos;t load students — try refreshing</p>
+          ) : (
+            <SearchablePicker
+              options={studentOptions}
+              value={studentId}
+              onChange={setStudentId}
+              loading={loadingPickers}
+              placeholder="Search students by name or admission no."
+              emptyText="No students available to enroll"
+            />
+          )}
         </FormField>
         <FormField label="Class" required hint="Only classes in your managed section(s) are shown">
           <Select value={classId} onValueChange={setClassId}>
@@ -387,6 +417,13 @@ function AssignTeacherPanel({ schoolId, profile, qc, managedClasses, classLabel 
       return data as Profile[]
     }
   })
+
+  const teacherOptions: PickerOption[] = teachers.map(t => ({
+    value: t.id,
+    label: `${t.first_name} ${t.last_name}`,
+    sublabel: t.email ?? undefined,
+    searchText: `${t.last_name} ${t.first_name} ${t.email ?? ''}`
+  }))
 
   const selectedClassLevelId = managedClasses.find(c => c.id === classId)?.class_level_id
 
@@ -428,13 +465,14 @@ function AssignTeacherPanel({ schoolId, profile, qc, managedClasses, classLabel 
   return (
     <Card>
       <CardContent className="pt-6 space-y-4 max-w-lg">
-        <FormField label="Teacher" required>
-          <Select value={teacherId} onValueChange={setTeacherId}>
-            <SelectTrigger><SelectValue placeholder="Select a teacher" /></SelectTrigger>
-            <SelectContent>
-              {teachers.map(t => <SelectItem key={t.id} value={t.id}>{t.first_name} {t.last_name}</SelectItem>)}
-            </SelectContent>
-          </Select>
+        <FormField label="Teacher" required hint="Search by name or email">
+          <SearchablePicker
+            options={teacherOptions}
+            value={teacherId}
+            onChange={setTeacherId}
+            placeholder="Search teachers by name or email"
+            emptyText="No teachers available"
+          />
         </FormField>
         <FormField label="Class" required hint="Only classes in your managed section(s) are shown">
           <Select value={classId} onValueChange={v => { setClassId(v); setSubjectId(NONE_VALUE) }}>
@@ -458,6 +496,72 @@ function AssignTeacherPanel({ schoolId, profile, qc, managedClasses, classLabel 
         </Button>
       </CardContent>
     </Card>
+  )
+}
+
+// ══════════════════════════════════════════════════════════
+// GROUPS & SUBJECTS — each student's group (Science/Arts, religion…) and individually-chosen electives, for a
+// class in a section this teacher holds "enroll students" for. The
+// database re-checks the same permission on every change.
+// ══════════════════════════════════════════════════════════
+function SubjectChoicesTab({ currentSession, managedClasses, classLabel }: {
+  currentSession: Session | null | undefined; managedClasses: Class[]; classLabel: (cls?: Class) => string
+}) {
+  const [classId, setClassId] = useState('')
+  if (!currentSession) {
+    return <p className="text-sm text-muted-foreground">No current session is set — ask your school admin to mark one as current under Sessions.</p>
+  }
+  const selected = managedClasses.find(c => c.id === classId)
+  return (
+    <div className="space-y-4">
+      <div className="max-w-sm">
+        <FormField label="Class" hint="Only classes in your managed section(s) are shown">
+          <Select value={classId} onValueChange={setClassId}>
+            <SelectTrigger><SelectValue placeholder="Select a class" /></SelectTrigger>
+            <SelectContent>
+              {managedClasses.map(c => <SelectItem key={c.id} value={c.id}>{classLabel(c)}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </FormField>
+      </div>
+      {selected && (
+        <div className="space-y-8">
+          <SubjectLoadCheck key={`load-${selected.id}`} classId={selected.id} sessionId={selected.session_id} />
+          <section>
+            <h3 className="text-sm font-semibold mb-2">Student groups</h3>
+            <StudentGroupsPanel key={`groups-${selected.id}`} classId={selected.id} classLabel={classLabel(selected)} />
+          </section>
+          <section>
+            <h3 className="text-sm font-semibold mb-2">Subjects students choose individually</h3>
+            <SubjectChoicesPanel key={`choices-${selected.id}`} classId={selected.id} classLabel={classLabel(selected)} />
+          </section>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════════════════════
+// ASSESSMENT LAYOUT — the same editor the school admin uses, locked to
+// ONE section this teacher holds "assessment layout" for. Row-level
+// security in the database enforces the same boundary (migration 054).
+// ══════════════════════════════════════════════════════════
+function AssessmentLayoutTab({ sections }: { sections: { id: string; name: string }[] }) {
+  const [sectionId, setSectionId] = useState(sections[0]?.id ?? '')
+  return (
+    <div className="space-y-4">
+      {sections.length > 1 && (
+        <div className="max-w-sm">
+          <FormField label="Section">
+            <Select value={sectionId} onValueChange={setSectionId}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>{sections.map(sec => <SelectItem key={sec.id} value={sec.id}>{sec.name}</SelectItem>)}</SelectContent>
+            </Select>
+          </FormField>
+        </div>
+      )}
+      {sectionId && <AssessmentsPage key={sectionId} lockedSectionId={sectionId} />}
+    </div>
   )
 }
 

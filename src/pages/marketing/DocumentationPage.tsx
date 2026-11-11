@@ -78,6 +78,8 @@ const SECTIONS: DocSection[] = [
             <p><strong>Class Levels</strong> (e.g. "JSS 1") and <strong>Class Arms</strong> (e.g. "A", "B") are school-wide and persist across sessions. A <strong>Class</strong> is the combination of a level, an optional arm, and a session — this is what students actually enroll into.</p>
             <p>New sessions automatically copy the previous session's class structure (and form teacher assignments), so you don't need to recreate classes every year.</p>
             <p><strong>Subjects</strong> are a global catalog per school, offered at specific class levels via Subject Offerings — a subject only shows up for grading at the levels it's explicitly offered at.</p>
+            <p><strong>Electives and student groups.</strong> Not every student takes every subject — science students take Technical Drawing while arts students take Foods &amp; Nutrition; Christian students take Christian Religious Studies while Muslim students take Islamic Religious Studies. Set this up in three steps: (1) <strong>Student Groups</strong> in the menu — create a type (e.g. <em>Stream</em>) and its groups (Science, Arts, Commercial); add <em>Religion</em> (Christian, Muslim) the same way. (2) <strong>Subjects → Class Level Offerings</strong> — for each subject choose <em>Everyone</em>, <em>Only certain groups</em> (pick e.g. Science) or <em>Students choose individually</em>. (3) Open a class and put each student in their group. A student then has only the subjects they take on their score sheets, report card, broadsheet row and average — so every student ends up with a comparable number of subjects and no "empty" subjects pull an average down.</p>
+            <p>A class page shows a <strong>balance check</strong> listing how many students take how many subjects, and names anyone who differs — usually a student with no group set, who is also marked in red on the grid. Groups are per session and carried forward when you promote a class. Restricting a subject keeps every score already entered (it is only hidden, and you are told how many students it affects first), a group still used by a student or a subject can't be deleted, and a student can be in only one group per type.</p>
           </>
         )
       },
@@ -128,6 +130,22 @@ const SECTIONS: DocSection[] = [
         )
       },
       {
+        id: 'assessment-layouts',
+        title: 'Assessment Layouts (school-wide or per section)',
+        content: (
+          <>
+            <p>An <strong>assessment layout</strong> is the set of score fields your school uses — Classwork, Assignment, Exam, the computed Total, and so on. By default there is one <strong>school default</strong> layout used by every class. If different parts of your school assess differently (say, Early Years versus High School), open <strong>Assessments</strong>, choose a section from the Layout selector, and create a layout for just that section.</p>
+            <ul className="list-disc pl-5 space-y-1">
+              <li><strong>Start from a copy</strong> (recommended) keeps the section's fields as they are and carries over any scores already entered. <strong>Start blank</strong> is only possible before any scores exist for that section.</li>
+              <li>A section without its own layout keeps using the school default. Other sections are never affected by edits to one layout.</li>
+              <li>You can remove a section layout (the section falls back to the default) only while no scores have been recorded with it.</li>
+              <li>Score Entry, the Pre-CA sheet, report cards, broadsheets and analytics all follow the layout of the class they are for.</li>
+            </ul>
+            <p>You can also let a trusted teacher manage <em>their own section's</em> layout by switching on <strong>Assessment layout</strong> for them under Section Admins.</p>
+          </>
+        )
+      },
+      {
         id: 'section-admins',
         title: 'Delegating to Section Admins',
         content: (
@@ -135,11 +153,12 @@ const SECTIONS: DocSection[] = [
             <p>If your school uses <strong>School Sections</strong> (e.g. Basic School, High School — set up under Classes), you can delegate a limited set of admin capabilities to a trusted teacher for one section, without making them a full School Admin. From the <strong>Section Admins</strong> page, pick a teacher and a section, then toggle exactly which of these they can do:</p>
             <ul className="list-disc pl-5 space-y-1">
               <li><strong>Add students</strong> — create new student records (school-wide, since a student isn't tied to a section until enrolled)</li>
-              <li><strong>Enroll students</strong> — place a student into a class within their section</li>
+              <li><strong>Enroll students</strong> — place a student into a class within their section, and choose which optional subjects each student takes</li>
               <li><strong>Assign teachers</strong> — assign a teacher to a class within their section</li>
               <li><strong>Download documents</strong> — generate bulk report cards and transcripts for a class within their section</li>
+              <li><strong>Assessment layout</strong> — create and manage the assessment fields (and so the Score Entry columns, Pre-CA sheet and report-card columns) for their section only</li>
             </ul>
-            <p>A Section Admin can never delete anything, edit a student's existing record, unenroll a student, or touch score entry — those stay School Admin-only. Toggles can be changed or revoked at any time, and a teacher can hold different permissions for different sections at once.</p>
+            <p>A Section Admin can never remove students or assignments, edit a student's existing record, touch score entry, change the school-wide default layout or another section's layout, or delete an assessment field that already has recorded scores — those stay School Admin-only. Toggles can be changed or revoked at any time, and a teacher can hold different permissions for different sections at once.</p>
           </>
         )
       },
@@ -210,8 +229,8 @@ const SECTIONS: DocSection[] = [
         title: 'If You\u2019re a Section Admin',
         content: (
           <>
-            <p>If your School Admin has granted you Section Admin permissions, a <strong>Section Admin</strong> area appears in your dashboard alongside your normal teacher pages. What you see there depends on exactly which permissions were granted — one or more of adding students, enrolling students into a class, assigning teachers to a class, and downloading bulk report cards/transcripts, all limited to the section(s) you've been given access to.</p>
-            <p>This access is purely additive — you keep every part of your regular teacher account exactly as it was, and there's nothing here that can delete a record, edit an existing student, or touch score entry.</p>
+            <p>If your School Admin has granted you Section Admin permissions, a <strong>Section Admin</strong> area appears in your dashboard alongside your normal teacher pages. What you see there depends on exactly which permissions were granted — one or more of adding students, enrolling students into a class (and choosing their optional subjects), assigning teachers to a class, downloading bulk report cards/transcripts, and managing your section's assessment layout, all limited to the section(s) you've been given access to. The Enroll and Assign screens have a search box — type part of a name, in any order, or an admission number to find someone quickly.</p>
+            <p>This access is purely additive — you keep every part of your regular teacher account exactly as it was, and there's nothing here that can remove a student, edit an existing student record, or touch score entry. (If you manage a section's assessment layout you can add and change fields, but only the School Admin can delete a field that already has scores.)</p>
           </>
         )
       }

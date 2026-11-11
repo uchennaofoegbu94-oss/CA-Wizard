@@ -93,6 +93,7 @@ export interface SectionAdmin {
   can_enroll_students: boolean
   can_assign_teachers: boolean
   can_download_documents: boolean
+  can_manage_assessments: boolean
   granted_by: string | null
   created_at: string
   updated_at: string
@@ -212,9 +213,22 @@ export interface TeacherAssignment {
 export type ScoreFieldType = 'input' | 'computed'
 export type ScoreComputeOperation = 'sum' | 'average' | 'weighted_percentage'
 
+// A named set of score fields. section_id NULL = the school-wide default;
+// otherwise it is the layout used by classes in that section (max one each).
+export interface AssessmentLayout {
+  id: string
+  school_id: string
+  section_id: string | null
+  name: string
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
 export interface AssessmentCategory {
   id: string
   school_id: string
+  layout_id: string
   name: string
   max_score: number
   order_index: number
@@ -387,9 +401,59 @@ export interface SubjectOffering {
   school_id: string
   subject_id: string
   class_level_id: string
+  // Elective at this level: only students who opted in take it
+  is_optional: boolean
+  // Only these groups take it (empty/undefined = not group-restricted)
+  groups?: { group_id: string }[]
   created_at: string
   subject?: Subject
   class_level?: ClassLevel
+}
+
+// One row per (student, optional subject, session) the student takes
+export interface StudentOptionalSubject {
+  id: string
+  school_id: string
+  student_id: string
+  subject_id: string
+  session_id: string
+  created_by: string | null
+  created_at: string
+}
+
+// A kind of grouping ("Stream", "Religion") and its values (Science, Arts / Christian, Muslim).
+// A student is in at most ONE group per type per session.
+export interface StudentGroupType {
+  id: string
+  school_id: string
+  name: string
+  sort_order: number
+  created_at: string
+}
+export interface StudentGroup {
+  id: string
+  school_id: string
+  type_id: string
+  name: string
+  sort_order: number
+  created_at: string
+}
+export interface StudentGroupMember {
+  id: string
+  school_id: string
+  student_id: string
+  session_id: string
+  type_id: string
+  group_id: string
+}
+// How a subject is offered at a class level
+export type SubjectAudienceMode = 'everyone' | 'groups' | 'choice'
+
+// get_class_subject_roster row: a subject a student actually takes in a class
+export interface ClassSubjectRosterRow {
+  student_id: string
+  subject_id: string
+  is_optional: boolean
 }
 
 // ─── Phase 3 completion / Phase 4 kickoff types ────────────

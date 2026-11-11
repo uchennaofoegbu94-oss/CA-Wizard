@@ -195,15 +195,32 @@ export default function PromotionPage() {
       )
       if (error) throw error
 
-      await logAudit({ schoolId: schoolId!, userId: profile?.id ?? null, action: 'PROMOTE', entityType: 'student_promotion', newValue: { count: toEnroll.length } })
-      return { graduated: false, count: toEnroll.length }
+      // Carry each student's groups (Science/Arts, Christian/Muslim…) and individually-chosen
+      // optional subjects into the new session. Subjects are matched by the NEW level's own rules. Non-fatal on purpose: the promotion has already
+      // succeeded, so a hiccup here must not make it look like the promotion failed — the admin can
+      // always set choices by hand under the class's Subject Choices.
+      let carried = 0
+      let carryFailed = false
+      const carry = await supabase.rpc('carry_forward_student_choices', { p_class_id: targetClass.id, p_student_ids: toEnroll.map(s => s.id) })
+      if (carry.error) carryFailed = true
+      else carried = (carry.data as number) ?? 0
+
+      await logAudit({ schoolId: schoolId!, userId: profile?.id ?? null, action: 'PROMOTE', entityType: 'student_promotion', newValue: { count: toEnroll.length, groups_and_choices_carried: carried } })
+      return { graduated: false, count: toEnroll.length, carried, carryFailed }
     },
     onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: ['promotion-roster'] })
       setConfirmOpen(false)
       if (result.graduated) toast.success(`${result.count} student${result.count !== 1 ? 's' : ''} graduated`)
       else if (result.count === 0) toast('Everyone selected was already promoted', { icon: 'ℹ️' })
-      else toast.success(`${result.count} student${result.count !== 1 ? 's' : ''} promoted`)
+      else {
+        toast.success(`${result.count} student${result.count !== 1 ? 's' : ''} promoted${'carried' in result && result.carried ? ` — ${result.carried} group / subject choice${result.carried !== 1 ? 's' : ''} carried forward` : ''}`)
+        if ('carryFailed' in result && result.carryFailed) {
+          toast('Student groups and subject choices could not be carried forward — set them on the new class\'s page.', { icon: '⚠️', duration: 7000 })
+        }
+        qc.invalidateQueries({ queryKey: ['class-subject-roster'] })
+        qc.invalidateQueries({ queryKey: ['class-group-members'] })
+      }
       // Clear the whole form on success so the next promotion run starts
       // fresh. Deliberately NOT done in onError below — a failed attempt
       // should leave every field exactly as the admin set it up, so they

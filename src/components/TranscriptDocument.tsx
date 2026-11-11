@@ -1,4 +1,5 @@
 import { forwardRef } from 'react'
+import { fmt2 } from '@/lib/utils'
 import { DocumentHeader, DocumentFooter } from './DocumentChrome'
 import type { Student, School } from '@/types'
 
@@ -97,24 +98,24 @@ export const TranscriptDocument = forwardRef<HTMLDivElement, TranscriptDocumentP
                     )
                   }
                   return (
-                    <div key={termIdx} className="border rounded-md overflow-hidden" style={{ borderColor: `${secondaryColor}40` }}>
-                      <p className="text-xs font-semibold px-2 py-1 text-white" style={{ backgroundColor: primaryColor }}>
+                    <div key={termIdx} className="border rounded-md" style={{ borderColor: `${secondaryColor}40` }}>
+                      <p className="text-xs font-semibold px-2 py-1 text-white rounded-t-md" style={{ backgroundColor: primaryColor }}>
                         {snap.term_info.name}
                       </p>
                       <table className="w-full text-[10px]">
                         <tbody className="px-2">
                           {(snap.snapshot_data.subjects ?? []).map((r, i) => (
                             <tr key={i} className="border-b border-dashed">
-                              <td className="py-0.5 pr-1 pl-2 truncate max-w-[70px]">{r.subject?.name}</td>
-                              <td className="py-0.5 text-right font-semibold">{r.total}</td>
+                              <td className="py-0.5 pr-1 pl-2">{r.subject?.name}</td>
+                              <td className="py-0.5 text-right font-semibold">{fmt2(r.total)}</td>
                               <td className="py-0.5 text-right pl-1 pr-2" style={{ color: primaryColor }}>{r.grade}</td>
                             </tr>
                           ))}
                         </tbody>
                       </table>
-                      <div className="flex justify-between px-2 py-1 text-[10px] font-semibold" style={{ backgroundColor: `${secondaryColor}12` }}>
-                        <span>Total: {snap.snapshot_data.grandTotal}</span>
-                        <span>Avg: {snap.snapshot_data.average}</span>
+                      <div className="flex justify-between px-2 py-1 text-[10px] font-semibold rounded-b-md" style={{ backgroundColor: `${secondaryColor}12` }}>
+                        <span>Total: {fmt2(snap.snapshot_data.grandTotal)}</span>
+                        <span>Avg: {fmt2(snap.snapshot_data.average)}</span>
                       </div>
                     </div>
                   )
@@ -132,7 +133,7 @@ export const TranscriptDocument = forwardRef<HTMLDivElement, TranscriptDocumentP
                 {compiledAffective.map(d => (
                   <div key={d.name} className="flex justify-between text-sm py-0.5">
                     <span className="text-muted-foreground">{d.name}</span>
-                    <span className="font-medium">{d.average}</span>
+                    <span className="font-medium">{fmt2(d.average)}</span>
                   </div>
                 ))}
               </div>
@@ -143,7 +144,7 @@ export const TranscriptDocument = forwardRef<HTMLDivElement, TranscriptDocumentP
                 {compiledPsychomotor.map(d => (
                   <div key={d.name} className="flex justify-between text-sm py-0.5">
                     <span className="text-muted-foreground">{d.name}</span>
-                    <span className="font-medium">{d.average}</span>
+                    <span className="font-medium">{fmt2(d.average)}</span>
                   </div>
                 ))}
               </div>

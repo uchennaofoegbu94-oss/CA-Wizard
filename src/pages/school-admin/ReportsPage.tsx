@@ -13,14 +13,16 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from '@/components/ui/select'
 import { groupBySection } from '@/lib/sections'
-import { ordinalSuffix } from '@/lib/utils'
+import { ordinalSuffix, round2, sum2 } from '@/lib/utils'
+import { useClassSubjectRoster, indexRoster, rankEntries } from '@/lib/subjectRoster'
 import { canUseBulkGeneration, tierLabel } from '@/lib/tierLimits'
 import toast from 'react-hot-toast'
 import type { Term, Subject, Student, StudentEnrollment, ClassSubjectTermResult, Class, Session, School, SchoolSection } from '@/types'
 
 interface StudentTotals {
   student: Student
-  perSubject: Record<string, number>
+  // null = the student doesn't take this (optional) subject
+  perSubject: Record<string, number | null>
   grandTotal: number
   average: number
 }
@@ -164,23 +166,35 @@ export default function ReportsPage() {
     enabled: !!selectedClassId && !!effectiveTermId && subjects.length > 0
   })
 
+  // Who takes which subject (optional subjects) — the database rule shared with Score Entry and report cards
+  const { data: rosterRows, isError: rosterFailed } = useClassSubjectRoster(selectedClassId || null)
+  const roster = useMemo(() => indexRoster(rosterRows), [rosterRows])
+
   const rows: StudentTotals[] = useMemo(() => {
     const students = enrollments.map(e => e.student!).filter(Boolean)
     const computed = students.map(student => {
-      const perSubject: Record<string, number> = {}
-      let grandTotal = 0
+      const perSubject: Record<string, number | null> = {}
+      const takes = roster.subjectsByStudent.get(student.id)
+      const totals: number[] = []
       subjects.forEach(subj => {
+        const takesIt = rosterFailed || !rosterRows ? true : !!takes?.has(subj.id)
+        if (!takesIt) { perSubject[subj.id] = null; return }
         const subjResults = resultsBySubject[subj.id] ?? []
         const totalRow = subjResults.find(r => r.student_id === student.id && r.is_total_field)
-        const total = totalRow?.value ?? 0
+        const total = round2(totalRow?.value ?? 0)
         perSubject[subj.id] = total
-        grandTotal += total
+        totals.push(total)
       })
-      const average = subjects.length > 0 ? Math.round((grandTotal / subjects.length) * 100) / 100 : 0
-      return { student, perSubject, grandTotal, average }
+      // 2dp rule: sum2/round2 remove float noise like 120.52000000000001
+      const grandTotal = sum2(totals)
+      // Average over the subjects THIS student takes (not every subject the level offers)
+      const average = totals.length > 0 ? round2(grandTotal / totals.length) : 0
+      return { student, perSubject, grandTotal, average, count: totals.length }
     })
-    return computed.sort((a, b) => b.grandTotal - a.grandTotal)
-  }, [enrollments, subjects, resultsBySubject])
+    // Same total-points order as before unless electives make subject counts differ; then by average
+    const order = new Map(rankEntries(computed.map(c => ({ studentId: c.student.id, total: c.grandTotal, average: c.average, count: c.count }))).map((e, i) => [e.studentId, i]))
+    return computed.sort((a, b) => order.get(a.student.id)! - order.get(b.student.id)!)
+  }, [enrollments, subjects, resultsBySubject, roster, rosterRows, rosterFailed])
 
   const classLabel = (cls?: Class) =>
     cls ? `${cls.class_level?.name ?? ''}${cls.class_arm ? ' ' + cls.class_arm.name : ''}`.trim() : ''
@@ -329,7 +343,9 @@ export default function ReportsPage() {
                           {row.student.last_name}, {row.student.first_name}
                         </TableCell>
                         {subjects.map(s => (
-                          <TableCell key={s.id} className="text-center text-xs px-1.5 py-1.5">{row.perSubject[s.id] || '—'}</TableCell>
+                          row.perSubject[s.id] === null
+                            ? <TableCell key={s.id} className="text-center text-[10px] px-1.5 py-1.5 text-muted-foreground/60" title="Doesn't take this optional subject">n/a</TableCell>
+                            : <TableCell key={s.id} className="text-center text-xs px-1.5 py-1.5">{row.perSubject[s.id] || '—'}</TableCell>
                         ))}
                         <TableCell className="text-center font-semibold text-xs px-2 py-1.5">{row.grandTotal}</TableCell>
                         <TableCell className="text-center px-2 py-1.5">
