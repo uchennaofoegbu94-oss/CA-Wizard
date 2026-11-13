@@ -363,7 +363,7 @@ export default function SubjectsPage() {
             <DialogDescription>
               Tick the subjects this level offers, then choose who takes each one: <strong>Everyone</strong>, <strong>Only certain groups</strong> (e.g. Technical Drawing → Science,
               Foods &amp; Nutrition → Arts, Islamic Studies → Muslim) or <strong>Students choose individually</strong>. A student only has the subjects they take on their
-              score sheets, report card, broadsheet and average.
+              score sheets, report card, broadsheet and average. A student who already has recorded scores in a subject always keeps it, so changing this never hides a result.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-1 max-h-80 overflow-y-auto">

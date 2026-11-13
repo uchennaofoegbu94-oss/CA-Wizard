@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import { logAudit } from '@/lib/audit'
 import { useGroupTypes, useClassGroupMembers } from '@/lib/studentGroups'
+import { useClassSubjectRoster, indexRoster } from '@/lib/subjectRoster'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Spinner } from '@/components/ui/table'
@@ -39,6 +40,13 @@ export function StudentGroupsPanel({ classId, classLabel, setupHint }: Props) {
   })
   const { data: types = [], isLoading: loadingTypes } = useGroupTypes(schoolId)
   const { data: members = [], isLoading: loadingMembers } = useClassGroupMembers(classId, cls?.session_id)
+  const { data: rosterRows } = useClassSubjectRoster(classId)
+  // subjects a student keeps ONLY because scores are recorded (their group wouldn't give them)
+  const keptCount = useMemo(() => {
+    const m = new Map<string, number>()
+    indexRoster(rosterRows).viaScores.forEach(k => { const sid = k.split(':')[0]; m.set(sid, (m.get(sid) ?? 0) + 1) })
+    return m
+  }, [rosterRows])
 
   const { data: students = [], isLoading: loadingStudents } = useQuery({
     queryKey: ['subject-choices-students', classId],
@@ -148,7 +156,7 @@ export function StudentGroupsPanel({ classId, classLabel, setupHint }: Props) {
       <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800 dark:bg-blue-950/30 dark:border-blue-900 dark:text-blue-200">
         Choose each student&apos;s group for <strong>{classLabel}</strong> this session. Subjects restricted to a group (for example Technical Drawing → Science,
         Islamic Studies → Muslim) then appear only for the students in it. A student with no group won&apos;t get those subjects — they&apos;re flagged in red so nobody is missed.
-        A student can be in only one group per type.
+        A student can be in only one group per type. <strong>Changing a group never hides results:</strong> a student keeps any subject they already have recorded scores in.
       </div>
 
       <div className="relative max-w-sm">
@@ -215,6 +223,11 @@ export function StudentGroupsPanel({ classId, classLabel, setupHint }: Props) {
                   <td className="px-4 py-2 sticky left-0 bg-background">
                     <div className="font-medium">{st.last_name}, {st.first_name}</div>
                     <div className="text-xs text-muted-foreground">{st.admission_number}</div>
+                    {(keptCount.get(st.id) ?? 0) > 0 && (
+                      <div className="mt-0.5 text-[10px] text-blue-700 dark:text-blue-300" title="These subjects are not given by this student's groups; they stay because scores are already recorded.">
+                        keeps {keptCount.get(st.id)} subject{keptCount.get(st.id) !== 1 ? 's' : ''} via recorded scores
+                      </div>
+                    )}
                   </td>
                   {usableTypes.map(t => {
                     const current = groupOf.get(`${st.id}:${t.id}`) ?? ''

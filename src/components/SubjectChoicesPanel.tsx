@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Search, X, Loader2, Info } from 'lucide-react'
+import { Search, X, Loader2, Info, Lock } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import { logAudit } from '@/lib/audit'
@@ -75,6 +75,14 @@ export function SubjectChoicesPanel({ classId, classLabel, offeringsHint }: Prop
     return m
   }, [roster])
 
+  // A student who already has recorded scores in a subject keeps it whatever is ticked, so un-ticking
+  // them would do nothing. Show them as locked instead of offering a control that silently fails.
+  const locked = useMemo(() => {
+    const m = new Set<string>()
+    roster.forEach(r => { if (r.is_optional && r.has_scores) m.add(`${r.student_id}:${r.subject_id}`) })
+    return m
+  }, [roster])
+
   const visibleStudents = useMemo(() => {
     const tokens = norm(search).split(/\s+/).filter(Boolean)
     if (tokens.length === 0) return students
@@ -97,8 +105,12 @@ export function SubjectChoicesPanel({ classId, classLabel, offeringsHint }: Prop
       const previous = qc.getQueryData<ClassSubjectRosterRow[]>(rosterKey)
       qc.setQueryData<ClassSubjectRosterRow[]>(rosterKey, (old = []) => {
         const ids = new Set(studentIds)
-        const without = old.filter(r => !(r.subject_id === subjectId && ids.has(r.student_id)))
-        return value ? [...without, ...studentIds.map(student_id => ({ student_id, subject_id: subjectId, is_optional: true }))] : without
+        // students with recorded scores stay on the subject even when un-ticked, so keep their rows
+        const without = old.filter(r => !(r.subject_id === subjectId && ids.has(r.student_id)) || r.has_scores)
+        const have = new Set(without.filter(r => r.subject_id === subjectId).map(r => r.student_id))
+        return value
+          ? [...without, ...studentIds.filter(id => !have.has(id)).map(student_id => ({ student_id, subject_id: subjectId, is_optional: true, via_scores: false, has_scores: false }))]
+          : without
       })
       return { previous }
     },
@@ -113,7 +125,12 @@ export function SubjectChoicesPanel({ classId, classLabel, offeringsHint }: Prop
       qc.invalidateQueries({ queryKey: ['score-entry'] })
     },
     onSuccess: (_d, { subjectId, studentIds, takes: value }) => {
-      if (studentIds.length > 1) toast.success(value ? `Added ${studentIds.length} students` : `Removed ${studentIds.length} students`)
+      const kept = value ? 0 : studentIds.filter(id => locked.has(`${id}:${subjectId}`)).length
+      if (studentIds.length > 1 || kept > 0) {
+        toast.success(value
+          ? `Added ${studentIds.length} students`
+          : `Removed ${studentIds.length - kept} student${studentIds.length - kept !== 1 ? 's' : ''}${kept > 0 ? ` — ${kept} kept because they already have recorded scores` : ''}`)
+      }
       logAudit({
         schoolId: schoolId!, userId: profile?.id ?? null, action: 'UPDATE', entityType: 'student_optional_subject',
         entityId: subjectId, newValue: { class_id: classId, students: studentIds.length, takes: value }
@@ -150,7 +167,8 @@ export function SubjectChoicesPanel({ classId, classLabel, offeringsHint }: Prop
     <div className="space-y-4">
       <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800 dark:bg-blue-950/30 dark:border-blue-900 dark:text-blue-200">
         Tick the optional subjects each student in <strong>{classLabel}</strong> takes this session. A student who isn&apos;t ticked won&apos;t appear
-        on that subject&apos;s score sheet and won&apos;t have it on their report card, broadsheet or average. Unticking never deletes scores that were already entered — it just hides them.
+        on that subject&apos;s score sheet and won&apos;t have it on their report card, broadsheet or average. A student who <strong>already has recorded scores</strong> in a subject
+        keeps it (shown with a <Lock className="inline h-3 w-3 -mt-0.5" />) so no result is ever hidden — to drop it, clear their scores in Score Entry.
       </div>
 
       <div className="relative max-w-sm">
@@ -210,15 +228,20 @@ export function SubjectChoicesPanel({ classId, classLabel, offeringsHint }: Prop
                   </td>
                   {optionalSubjects.map(sub => {
                     const checked = takes.has(`${st.id}:${sub.id}`)
+                    const isLocked = checked && locked.has(`${st.id}:${sub.id}`)
                     return (
                       <td key={sub.id} className="px-3 py-2 text-center">
-                        <input
-                          type="checkbox"
-                          className="h-4 w-4 rounded cursor-pointer"
-                          checked={checked}
-                          onChange={() => setTakers.mutate({ subjectId: sub.id, studentIds: [st.id], takes: !checked })}
-                          aria-label={`${st.first_name} ${st.last_name} takes ${sub.name}`}
-                        />
+                        <span className="inline-flex items-center gap-1" title={isLocked ? `Has recorded scores in ${sub.name}, so it stays. Clear the scores in Score Entry to remove it.` : undefined}>
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 rounded cursor-pointer disabled:cursor-not-allowed"
+                            checked={checked}
+                            disabled={isLocked}
+                            onChange={() => setTakers.mutate({ subjectId: sub.id, studentIds: [st.id], takes: !checked })}
+                            aria-label={`${st.first_name} ${st.last_name} takes ${sub.name}${isLocked ? ' (has recorded scores)' : ''}`}
+                          />
+                          {isLocked && <Lock className="h-3 w-3 text-muted-foreground" />}
+                        </span>
                       </td>
                     )
                   })}

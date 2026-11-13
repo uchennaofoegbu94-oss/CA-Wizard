@@ -261,7 +261,10 @@ export default function ReportCardPage() {
 
   const rows: ReportCardRow[] = useMemo(() => {
     const ranges = gradingSystem?.grade_ranges ?? []
-    return subjects.map(subj => {
+    // A subject that is on the student's record ONLY because of scores recorded in another term has no
+    // results this term; leave it off rather than print an all-zero row that drags the average down.
+    // (Compulsory / group / chosen subjects are untouched — they keep their rows even with no data.)
+    return subjects.filter(subj => !(roster.viaScores.has(`${studentId}:${subj.id}`) && (fieldsBySubject[subj.id] ?? []).length === 0)).map(subj => {
       const fields = fieldsBySubject[subj.id] ?? []
       const totalField = fields.find(f => f.is_total_field)
       const percentage = totalField && totalField.max_value > 0
@@ -279,7 +282,7 @@ export default function ReportCardPage() {
         remark
       }
     })
-  }, [subjects, fieldsBySubject, gradingSystem])
+  }, [subjects, fieldsBySubject, gradingSystem, roster, studentId])
 
   // 2dp rule: client-side sums leak float noise (120.52000000000001), so round before display AND before saving into a snapshot
   const grandTotal = sum2(rows.map(r => r.total))

@@ -24,20 +24,27 @@ export interface RosterIndex {
   // studentId -> set of subjectIds they take
   subjectsByStudent: Map<string, Set<string>>
   optionalSubjectIds: Set<string>
+  // `${studentId}:${subjectId}` keys
+  viaScores: Set<string>   // kept visible only because scores exist
+  hasScores: Set<string>   // has recorded scores (cannot be un-ticked away)
 }
 
 export function indexRoster(rows: ClassSubjectRosterRow[] | undefined): RosterIndex {
   const studentsBySubject = new Map<string, Set<string>>()
   const subjectsByStudent = new Map<string, Set<string>>()
   const optionalSubjectIds = new Set<string>()
+  const viaScores = new Set<string>()
+  const hasScores = new Set<string>()
   for (const r of rows ?? []) {
     if (!studentsBySubject.has(r.subject_id)) studentsBySubject.set(r.subject_id, new Set())
     studentsBySubject.get(r.subject_id)!.add(r.student_id)
     if (!subjectsByStudent.has(r.student_id)) subjectsByStudent.set(r.student_id, new Set())
     subjectsByStudent.get(r.student_id)!.add(r.subject_id)
     if (r.is_optional) optionalSubjectIds.add(r.subject_id)
+    if (r.via_scores) viaScores.add(`${r.student_id}:${r.subject_id}`)
+    if (r.has_scores) hasScores.add(`${r.student_id}:${r.subject_id}`)
   }
-  return { studentsBySubject, subjectsByStudent, optionalSubjectIds }
+  return { studentsBySubject, subjectsByStudent, optionalSubjectIds, viaScores, hasScores }
 }
 
 // Ranking that stays fair when students take different numbers of subjects.

@@ -55,6 +55,7 @@ const SCHOOL_ADMIN_NAV: NavItem[] = [
   { label: 'Students',    to: '/school/students',    icon: Users },
   { label: 'Subjects',    to: '/school/subjects',    icon: BookOpen },
   { label: 'Student Groups', to: '/school/student-groups', icon: Users },
+  { label: 'Score Health', to: '/school/score-health', icon: ShieldCheck },
   { label: 'Teachers',    to: '/school/teachers',    icon: Users },
   { label: 'Section Admins', to: '/school/section-admins', icon: ShieldCheck },
   { label: 'Assessments', to: '/school/assessments', icon: ClipboardList },

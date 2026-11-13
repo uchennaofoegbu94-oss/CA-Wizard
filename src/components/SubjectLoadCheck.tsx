@@ -46,7 +46,8 @@ export function SubjectLoadCheck({ classId, sessionId }: Props) {
     const groupedBy = new Map(members.map(m => [`${m.student_id}:${m.type_id}`, m.group_id]))
     const outliers = counts.filter(c => c.count !== norm).map(c => {
       const missingTypes = types.filter(t => t.groups.length > 0 && !groupedBy.has(`${c.student.id}:${t.id}`)).map(t => t.name)
-      return { ...c, missingTypes }
+      const kept = [...roster.viaScores].filter(k => k.startsWith(`${c.student.id}:`)).length
+      return { ...c, missingTypes, kept }
     })
     return { norm, tally: [...tally.entries()].sort((a, b) => a[0] - b[0]), outliers }
   }, [rosterRows, students, members, types])
@@ -82,11 +83,12 @@ export function SubjectLoadCheck({ classId, sessionId }: Props) {
                 <span className="font-medium">{o.student.last_name}, {o.student.first_name}</span>
                 <span className="text-muted-foreground">takes {o.count}</span>
                 {o.missingTypes.length > 0 && <span className="text-xs text-destructive">no {o.missingTypes.join(' / ')} set</span>}
+                {o.kept > 0 && <span className="text-xs text-blue-700 dark:text-blue-300">includes {o.kept} kept by recorded scores</span>}
               </li>
             ))}
             {report.outliers.length > 12 && <li className="text-xs text-muted-foreground">…and {report.outliers.length - 12} more</li>}
             <li className="text-xs text-muted-foreground pt-1">
-              Averages and ranking use each student&apos;s own subjects, so a student with missing subjects will be ranked on fewer. Fix the group or subject choice above, then this updates.
+              Averages and ranking use each student&apos;s own subjects, so a student with missing subjects will be ranked on fewer. Fix the group or subject choice above, then this updates. A subject kept because scores are recorded is never removed automatically.
             </li>
           </ul>
         )}

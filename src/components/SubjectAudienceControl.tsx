@@ -22,9 +22,9 @@ interface Props {
 // Who takes this subject at this class level:
 //   Everyone (compulsory)  |  Only certain groups (e.g. Science)  |  Students choose individually
 // Exactly one mode at a time — the database enforces it (set_subject_audience), this just
-// makes the three choices obvious. Restricting to groups first asks the database how many
-// students who ALREADY have scores would stop taking the subject, and confirms before applying
-// (their scores are never deleted, only hidden).
+// makes the three choices obvious. Changing who takes a subject can never hide a result: a student
+// who already has recorded scores in it keeps it, so there is nothing to confirm — the toast just
+// says how many such students sit outside the new audience.
 export function SubjectAudienceControl({ subjectId, subjectName, levelId, levelName, offering, types, onApplied }: Props) {
   const { schoolId, profile } = useAuth()
   const qc = useQueryClient()
@@ -46,17 +46,6 @@ export function SubjectAudienceControl({ subjectId, subjectName, levelId, levelN
 
   const apply = useMutation({
     mutationFn: async ({ m, groupIds }: { m: SubjectAudienceMode; groupIds: string[] }) => {
-      if (m === 'groups') {
-        const { data: hidden, error: pe } = await supabase.rpc('count_students_hidden_by_audience', {
-          p_subject_id: subjectId, p_class_level_id: levelId, p_group_ids: groupIds
-        })
-        if (pe) throw pe
-        if ((hidden as number) > 0 && !window.confirm(
-          `${hidden} student${hidden === 1 ? '' : 's'} who already ${hidden === 1 ? 'has' : 'have'} scores in ${subjectName} won't take it any more. ` +
-          `Their scores are kept (just hidden) and come back if you change this. Continue?`)) {
-          throw new Error('__cancelled')
-        }
-      }
       const { data, error } = await supabase.rpc('set_subject_audience', {
         p_subject_id: subjectId, p_class_level_id: levelId, p_mode: m, p_group_ids: m === 'groups' ? groupIds : []
       })
@@ -71,18 +60,15 @@ export function SubjectAudienceControl({ subjectId, subjectName, levelId, levelN
         .forEach(k => qc.invalidateQueries({ queryKey: [k] }))
       if (m === 'everyone') toast.success(`${subjectName} is now compulsory for everyone at ${levelName}`)
       else if (m === 'choice') toast.success(n > 0 ? `Students choose ${subjectName}. ${n} who already had scores were kept enrolled.` : `Students choose ${subjectName}. Tick who takes it under the class's Subject Choices.`)
-      else toast.success(`${subjectName} is now only for ${groupIds.map(nameOf).join(' / ')}${n > 0 ? ` — ${n} student${n !== 1 ? 's' : ''} with existing scores no longer take it` : ''}. Assign students to groups on each class.`)
+      else toast.success(`${subjectName} is now only for ${groupIds.map(nameOf).join(' / ')}. Assign students to groups on each class.${n > 0 ? ` ${n} student${n !== 1 ? 's' : ''} outside those groups already ${n !== 1 ? 'have' : 'has'} scores in it and keep${n !== 1 ? '' : 's'} it — no result is hidden.` : ''}`, { duration: 7000 })
       logAudit({
         schoolId: schoolId!, userId: profile?.id ?? null, action: 'UPDATE', entityType: 'subject_offering', entityId: subjectId,
         newValue: { class_level_id: levelId, mode: m, groups: groupIds }
       })
     },
     onError: (e: Error) => {
-      // The admin cancelled the "N students will stop taking this" warning: leave the chooser exactly as
-      // they had it so they can adjust the groups. Only a real failure rolls the control back.
-      if (e.message === '__cancelled') return
       setMode(saved); setPicked(savedGroupIds)
-      toast.error(e.message.replace(/^(set_subject_audience|count_students_hidden_by_audience):\s*/, ''))
+      toast.error(e.message.replace(/^set_subject_audience:\s*/, ''))
     }
   })
 

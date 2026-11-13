@@ -454,6 +454,10 @@ export interface ClassSubjectRosterRow {
   student_id: string
   subject_id: string
   is_optional: boolean
+  // Visible ONLY because the student has recorded scores in it (not by group / tick)
+  via_scores: boolean
+  // The student has recorded scores in it at all — un-ticking or regrouping cannot remove it
+  has_scores: boolean
 }
 
 // ─── Phase 3 completion / Phase 4 kickoff types ────────────

@@ -261,7 +261,11 @@ export default function BulkReportCardPage() {
       // Only the subjects THIS student takes (optional ones they opted out of are left off)
       const takes = roster.subjectsByStudent.get(student.id)
       const studentSubjects = rosterFailed || !rosterRows ? subjects : subjects.filter(subj => takes?.has(subj.id))
-      const rows: ReportCardRow[] = studentSubjects.map(subj => {
+      // Leave off a subject that is on this student's record ONLY because of scores from another term
+      // (no results this term) instead of printing an all-zero row. Other subjects keep their rows.
+      const rows: ReportCardRow[] = studentSubjects.filter(subj =>
+        !(roster.viaScores.has(`${student.id}:${subj.id}`) && !allFields.some(f => f.student_id === student.id && f.subject_id === subj.id))
+      ).map(subj => {
         const fieldsForCell = allFields.filter(f => f.student_id === student.id && f.subject_id === subj.id)
         const totalField = fieldsForCell.find(f => f.is_total_field)
         const percentage = totalField && totalField.max_value > 0
